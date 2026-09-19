@@ -30,6 +30,40 @@ Run full orchestration:
 make gke-jupyter
 ```
 
+Run full orchestration with baseball data refresh:
+
+```bash
+make gke-jupyter-with-data
+```
+
+## Baseball Data Pipeline
+
+The top-level `mlb-data-pipeline/` module builds detail and aggregate Parquet datasets and publishes snapshot versions to DigitalOcean Spaces.
+
+Key outputs:
+
+- Detail Parquet partitioned by `season` and `month`
+- `player_season_metrics.parquet`
+- `player_career_metrics.parquet`
+- `manifest.json` and `latest.json` snapshot metadata
+
+Typical workflow:
+
+```bash
+make -C mlb-data-pipeline docker
+make -C mlb-data-pipeline publish GCLOUD_PROJECT_ID=<project>
+make -C mlb-data-pipeline run-job GCLOUD_PROJECT_ID=<project>
+```
+
+Local pipeline test workflow:
+
+```bash
+make -C mlb-data-pipeline local-install
+make -C mlb-data-pipeline local-run START_SEASON=2024 END_SEASON=2024 OUTPUT_DIR=$(pwd)/mlb-data-pipeline/output
+```
+
+DigitalOcean Spaces credentials are supplied through a Kubernetes secret named `do-spaces-baseball`.
+
 ## CI/CD
 
 - `Jenkinsfile` defines build, test, and deploy stages.
@@ -52,3 +86,4 @@ Dependabot configuration is in `.github/dependabot.yml` and tracks Docker base-i
 
 - `jupyter-hub/Dockerfile`
 - `jupyter-datascience-notebook/Dockerfile`
+- `mlb-data-pipeline/Dockerfile`

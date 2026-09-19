@@ -1,0 +1,64 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: baseball-data-refresh-weekly
+spec:
+  schedule: "0 5 * * 1"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 172800
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: pipeline
+            image: %DATA_PIPELINE_IMAGE%
+            env:
+            - name: START_SEASON
+              value: "2015"
+            - name: END_SEASON
+              value: "2026"
+            - name: OUTPUT_DIR
+              value: "/tmp/output"
+            - name: DATASET_PREFIX
+              value: "baseball"
+            - name: INCREMENTAL_MODE
+              value: "true"
+            - name: TRAILER_MONTHS
+              value: "1"
+            - name: SPACES_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: do-spaces-baseball
+                  key: bucket
+            - name: SPACES_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: do-spaces-baseball
+                  key: region
+            - name: SPACES_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: do-spaces-baseball
+                  key: endpoint
+            - name: SPACES_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: do-spaces-baseball
+                  key: access_key_id
+            - name: SPACES_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: do-spaces-baseball
+                  key: secret_access_key
+            resources:
+              requests:
+                cpu: "750m"
+                memory: "2Gi"
+              limits:
+                cpu: "2"
+                memory: "8Gi"

@@ -44,6 +44,12 @@ pipeline {
             sh 'make -C jupyter-hub docker'
           }
         }
+
+        stage('Build MLB Data Pipeline Image') {
+          steps {
+            sh 'make -C mlb-data-pipeline docker'
+          }
+        }
       }
     }
 
@@ -74,6 +80,29 @@ pipeline {
         sh 'make -C jupyter-datascience-notebook publish'
         sh 'make -C jupyter-hub publish'
         sh 'make -C jupyter-hub deploy'
+      }
+    }
+
+    stage('Data Refresh') {
+      when {
+        branch 'main'
+      }
+      steps {
+        script {
+          def refreshData = input(
+            id: 'DataRefreshApproval',
+            message: 'Publish pipeline image and trigger data refresh job?',
+            ok: 'Run Data Refresh',
+            parameters: [booleanParam(defaultValue: false, description: 'Check to run data refresh after deploy.', name: 'RUN_DATA_REFRESH')]
+          )
+
+          if (refreshData) {
+            sh 'make -C mlb-data-pipeline publish'
+            sh 'make -C mlb-data-pipeline run-job'
+          } else {
+            echo 'Skipping data refresh stage.'
+          }
+        }
       }
     }
   }

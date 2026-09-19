@@ -1,3 +1,27 @@
 *sed*
 
 */jupyter-hub_config.py
+mlb-data-pipeline/kubernetes-job.rendered.yaml
+mlb-data-pipeline/kubernetes-cronjob.rendered.yaml
+mlb-data-pipeline/output/
+
+# Python artifacts
+**/__pycache__/
+*.py[cod]
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Python tooling caches and reports
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Python packaging/build artifacts
+build/
+dist/
+*.egg-info/
