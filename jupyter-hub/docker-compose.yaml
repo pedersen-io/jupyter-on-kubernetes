@@ -1,6 +1,34 @@
-version: "2"
 services:
-  api:
-    image: jupyter-hub:latest
+  notebook-image:
+    build:
+      context: ../jupyter-datascience-notebook
+    image: local/jupyter-datascience-notebook:latest
+    profiles:
+      - build-only
+
+  hub:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    image: local/jupyter-hub:latest
+    container_name: jupyter-hub
     ports:
       - "8000:8000"
+    environment:
+      DOCKER_NOTEBOOK_IMAGE: local/jupyter-datascience-notebook:latest
+      DOCKER_NETWORK_NAME: jupyterhub-local
+      JUPYTERHUB_PASSWORD: jupyter
+    volumes:
+      - ./jupyter-hub_config.local.py:/etc/jupyter-hub/jupyter-hub_config.py:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - jupyterhub-data:/srv/jupyterhub
+    networks:
+      - jupyterhub
+    restart: unless-stopped
+
+volumes:
+  jupyterhub-data:
+
+networks:
+  jupyterhub:
+    name: jupyterhub-local
