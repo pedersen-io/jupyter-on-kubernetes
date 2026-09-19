@@ -34,6 +34,13 @@ class Config:
     spaces_endpoint: Optional[str]
     spaces_access_key_id: Optional[str]
     spaces_secret_access_key: Optional[str]
+    statcast_start_season: int = 2015
+    lahman_enabled: bool = False
+    lahman_start_season: int = 1871
+    lahman_end_season: int = 2014
+    lahman_player_mapping_path: Optional[Path] = None
+    lahman_include_overlap: bool = False
+    source_overlap_policy: str = "statcast_preferred"
 
 
 def get_config() -> Config:
@@ -48,6 +55,13 @@ def get_config() -> Config:
     sample_max_rows = int(os.getenv("SAMPLE_MAX_ROWS", "20000"))
     sample_max_windows = int(os.getenv("SAMPLE_MAX_WINDOWS", "2"))
     sample_random_state = int(os.getenv("SAMPLE_RANDOM_STATE", "42"))
+    statcast_start_season = int(os.getenv("STATCAST_START_SEASON", "2015"))
+    lahman_enabled = parse_bool(os.getenv("LAHMAN_ENABLED", "false"))
+    lahman_start_season = int(os.getenv("LAHMAN_START_SEASON", "1871"))
+    lahman_end_season = int(os.getenv("LAHMAN_END_SEASON", "2014"))
+    lahman_player_mapping_path_raw = os.getenv("LAHMAN_PLAYER_MAPPING_PATH")
+    lahman_include_overlap = parse_bool(os.getenv("LAHMAN_INCLUDE_OVERLAP", "false"))
+    source_overlap_policy = os.getenv("SOURCE_OVERLAP_POLICY", "statcast_preferred").strip().lower()
 
     if start_season > end_season:
         raise ValueError("START_SEASON cannot be greater than END_SEASON")
@@ -62,6 +76,14 @@ def get_config() -> Config:
         raise ValueError("SAMPLE_MAX_ROWS must be >= 1")
     if sample_max_windows < 1:
         raise ValueError("SAMPLE_MAX_WINDOWS must be >= 1")
+    if statcast_start_season < 1871:
+        raise ValueError("STATCAST_START_SEASON must be >= 1871")
+    if lahman_start_season > lahman_end_season:
+        raise ValueError("LAHMAN_START_SEASON cannot be greater than LAHMAN_END_SEASON")
+    if source_overlap_policy not in {"statcast_preferred", "lahman_preferred"}:
+        raise ValueError("SOURCE_OVERLAP_POLICY must be one of: statcast_preferred, lahman_preferred")
+
+    lahman_player_mapping_path = Path(lahman_player_mapping_path_raw) if lahman_player_mapping_path_raw else None
 
     return Config(
         start_season=start_season,
@@ -81,4 +103,11 @@ def get_config() -> Config:
         spaces_endpoint=os.getenv("SPACES_ENDPOINT"),
         spaces_access_key_id=os.getenv("SPACES_ACCESS_KEY_ID"),
         spaces_secret_access_key=os.getenv("SPACES_SECRET_ACCESS_KEY"),
+        statcast_start_season=statcast_start_season,
+        lahman_enabled=lahman_enabled,
+        lahman_start_season=lahman_start_season,
+        lahman_end_season=lahman_end_season,
+        lahman_player_mapping_path=lahman_player_mapping_path,
+        lahman_include_overlap=lahman_include_overlap,
+        source_overlap_policy=source_overlap_policy,
     )

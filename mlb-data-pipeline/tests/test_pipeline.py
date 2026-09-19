@@ -5,8 +5,13 @@ import unittest
 
 import test_helpers  # noqa: F401
 
+try:
+    import pandas as pd
+except ModuleNotFoundError:  # pragma: no cover - environment dependent
+    pd = None
+
 from config import Config
-from pipeline import build_latest_pointer, build_manifest, build_refresh_windows
+from pipeline import add_career_source_column, build_latest_pointer, build_manifest, build_refresh_windows, merge_season_aggregates
 
 
 class PipelineTests(unittest.TestCase):
@@ -33,9 +38,10 @@ class PipelineTests(unittest.TestCase):
 
     def test_build_manifest_includes_window_bounds(self):
         config = self.build_config()
-        manifest = build_manifest(config, "snap-1", "2024-04-01", "2024-04-30", 10, 2, 1, 3, 2)
+        manifest = build_manifest(config, "snap-1", "2024-04-01", "2024-04-30", ["statcast"], 10, 2, 1, 3, 2)
         self.assertEqual(manifest["source"]["window_start_date"], "2024-04-01")
         self.assertEqual(manifest["source"]["window_end_date"], "2024-04-30")
+        self.assertEqual(manifest["source"]["datasets"], ["statcast"])
         self.assertEqual(manifest["outputs"]["detail"]["rows"], 10)
         self.assertIn("team_season_metrics", manifest["outputs"]["aggregates"])
         self.assertIn("team_career_metrics", manifest["outputs"]["aggregates"])
@@ -74,6 +80,45 @@ class PipelineTests(unittest.TestCase):
         self.assertNotIn((2024, 1, "2024-01-01", "2024-01-31"), windows)
         self.assertEqual(start_date, "2024-02-01")
         self.assertEqual(end_date, date.today().strftime("%Y-%m-%d"))
+
+    @unittest.skipIf(pd is None, "pandas is not installed in this environment")
+    def test_merge_season_aggregates_prefers_statcast(self):
+        statcast = pd.DataFrame(
+            [
+                {"batter": "100", "season": 2015, "hits": 10, "source_system": "statcast"},
+            ]
+        )
+        lahman = pd.DataFrame(
+            [
+                {"batter": "100", "season": 2015, "hits": 9, "source_system": "lahman"},
+            ]
+        )
+
+        merged = merge_season_aggregates(statcast, lahman, ["batter", "season"], "statcast_preferred")
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged.iloc[0]["source_system"], "statcast")
+        self.assertEqual(int(merged.iloc[0]["hits"]), 10)
+
+    @unittest.skipIf(pd is None, "pandas is not installed in this environment")
+    def test_add_career_source_column_marks_mixed_rows(self):
+        career = pd.DataFrame(
+            [
+                {"batter": "100", "player_name": "Player A", "career_hits": 20},
+                {"batter": "200", "player_name": "Player B", "career_hits": 8},
+            ]
+        )
+        season = pd.DataFrame(
+            [
+                {"batter": "100", "player_name": "Player A", "season": 2014, "source_system": "lahman"},
+                {"batter": "100", "player_name": "Player A", "season": 2015, "source_system": "statcast"},
+                {"batter": "200", "player_name": "Player B", "season": 2013, "source_system": "lahman"},
+            ]
+        )
+
+        with_source = add_career_source_column(career, season, ["batter", "player_name"])
+        source_map = {(row["batter"], row["player_name"]): row["source_system"] for _, row in with_source.iterrows()}
+        self.assertEqual(source_map[("100", "Player A")], "mixed")
+        self.assertEqual(source_map[("200", "Player B")], "lahman")
 
 
 if __name__ == "__main__":

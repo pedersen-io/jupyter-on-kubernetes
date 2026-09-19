@@ -2,6 +2,11 @@
 
 This module builds detail and aggregate baseball datasets and publishes versioned Parquet snapshots to DigitalOcean Spaces.
 
+Data coverage model:
+
+- Statcast detail + aggregates: 2015 onward
+- Lahman aggregates-only (no Statcast-style event detail): configurable historical seasons, default 1871-2014
+
 The Python modules live directly under `src/` and the top-level `download_and_convert.py` file is only a thin CLI wrapper.
 
 The first run is designed to be a full historical load. After that, the Kubernetes CronJob runs in incremental mode and refreshes the newest data plus a one-month trailer so late corrections get picked up.
@@ -62,14 +67,15 @@ source mlb-data-pipeline/.venv/bin/activate
 make -C mlb-data-pipeline local-run START_SEASON=2024 END_SEASON=2024 OUTPUT_DIR=$(pwd)/mlb-data-pipeline/output
 ```
 
-Full local historical backfill (populate all available missing history):
+Full local historical backfill for this pipeline (Lahman pre-2015 + Statcast 2015+):
 
 ```bash
-# Statcast availability starts in 2015, so use 2015 as the earliest season.
+# Baseball predates Statcast. Enable Lahman to fill pre-2015 aggregates.
 make -C mlb-data-pipeline local-run \
 	PYTHON=python3.12 \
-	START_SEASON=2015 \
+	START_SEASON=1871 \
 	END_SEASON=$(date +%Y) \
+	LAHMAN_ENABLED=true \
 	INCREMENTAL_MODE=false \
 	OUTPUT_DIR=$(pwd)/mlb-data-pipeline/output
 ```
@@ -81,8 +87,22 @@ make -C mlb-data-pipeline local-run \
 	PYTHON=python3.12 \
 	START_SEASON=2015 \
 	END_SEASON=$(date +%Y) \
+	LAHMAN_ENABLED=true \
 	INCREMENTAL_MODE=true \
 	TRAILER_MONTHS=1 \
+	OUTPUT_DIR=$(pwd)/mlb-data-pipeline/output
+```
+
+Optional explicit player mapping for cross-source identity stitching:
+
+```bash
+make -C mlb-data-pipeline local-run \
+	PYTHON=python3.12 \
+	START_SEASON=1871 \
+	END_SEASON=$(date +%Y) \
+	LAHMAN_ENABLED=true \
+	LAHMAN_PLAYER_MAPPING_PATH=$(pwd)/mlb-data-pipeline/player_mapping.csv \
+	INCREMENTAL_MODE=false \
 	OUTPUT_DIR=$(pwd)/mlb-data-pipeline/output
 ```
 
@@ -136,6 +156,13 @@ INCREMENTAL_MODE=true TRAILER_MONTHS=1
 - `DATASET_PREFIX` default `baseball`
 - `INCREMENTAL_MODE` default `true`
 - `TRAILER_MONTHS` default `1`
+- `STATCAST_START_SEASON` default `2015`
+- `LAHMAN_ENABLED` default `false`
+- `LAHMAN_START_SEASON` default `1871`
+- `LAHMAN_END_SEASON` default `2014`
+- `LAHMAN_PLAYER_MAPPING_PATH` optional path to CSV with `playerID` and one of `batter|mlbam_id|mlbamid|key_mlbam`
+- `LAHMAN_INCLUDE_OVERLAP` default `false` (when false, Lahman contributes pre-Statcast seasons only)
+- `SOURCE_OVERLAP_POLICY` default `statcast_preferred` (`statcast_preferred` or `lahman_preferred`)
 - `SAMPLE_MODE` default `false`
 - `SAMPLE_START_DATE` optional `YYYY-MM-DD` (must be set with `SAMPLE_END_DATE`)
 - `SAMPLE_END_DATE` optional `YYYY-MM-DD` (must be set with `SAMPLE_START_DATE`)

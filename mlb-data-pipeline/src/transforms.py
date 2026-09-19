@@ -98,7 +98,7 @@ def write_detail_dataset(detail_df: pd.DataFrame, detail_dir) -> int:
     return len(detail_df)
 
 
-def build_player_season_aggregates(detail_df: pd.DataFrame) -> pd.DataFrame:
+def build_player_season_aggregates(detail_df: pd.DataFrame, source_system: str = "statcast") -> pd.DataFrame:
     import pandas as pd
 
     if detail_df.empty:
@@ -120,6 +120,7 @@ def build_player_season_aggregates(detail_df: pd.DataFrame) -> pd.DataFrame:
                 "obp",
                 "slg",
                 "ops",
+                "source_system",
             ]
         )
 
@@ -176,6 +177,7 @@ def build_player_season_aggregates(detail_df: pd.DataFrame) -> pd.DataFrame:
         triples_col="triples",
         home_runs_col="home_runs",
     )
+    grouped["source_system"] = source_system
     return grouped[
         [
             "batter",
@@ -194,6 +196,7 @@ def build_player_season_aggregates(detail_df: pd.DataFrame) -> pd.DataFrame:
             "obp",
             "slg",
             "ops",
+            "source_system",
         ]
     ]
 
@@ -221,6 +224,7 @@ def build_player_career_aggregates(player_season_df: pd.DataFrame) -> pd.DataFra
                 "career_slg",
                 "career_ops",
                 "career_hits_rank",
+                "source_system",
             ]
         )
 
@@ -264,7 +268,7 @@ def build_player_career_aggregates(player_season_df: pd.DataFrame) -> pd.DataFra
     return career.sort_values(["career_hits", "career_home_runs"], ascending=[False, False])
 
 
-def build_team_season_aggregates(detail_df: pd.DataFrame) -> pd.DataFrame:
+def build_team_season_aggregates(detail_df: pd.DataFrame, source_system: str = "statcast") -> pd.DataFrame:
     import pandas as pd
 
     if detail_df.empty:
@@ -285,6 +289,7 @@ def build_team_season_aggregates(detail_df: pd.DataFrame) -> pd.DataFrame:
                 "obp",
                 "slg",
                 "ops",
+                "source_system",
             ]
         )
 
@@ -338,6 +343,7 @@ def build_team_season_aggregates(detail_df: pd.DataFrame) -> pd.DataFrame:
         triples_col="triples",
         home_runs_col="home_runs",
     )
+    grouped["source_system"] = source_system
 
     return grouped[
         [
@@ -356,6 +362,7 @@ def build_team_season_aggregates(detail_df: pd.DataFrame) -> pd.DataFrame:
             "obp",
             "slg",
             "ops",
+            "source_system",
         ]
     ]
 
@@ -382,6 +389,7 @@ def build_team_career_aggregates(team_season_df: pd.DataFrame) -> pd.DataFrame:
                 "career_slg",
                 "career_ops",
                 "career_hits_rank",
+                "source_system",
             ]
         )
 
