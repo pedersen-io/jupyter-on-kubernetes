@@ -50,7 +50,21 @@ make -C mlb-data-pipeline apply-cronjob GCLOUD_PROJECT_ID=<project>
 Run directly on your machine and write outputs locally:
 
 ```bash
+# Creates/updates ./mlb-data-pipeline/.venv and installs deps there.
 make -C mlb-data-pipeline local-install
+
+# Optional: activate the venv for ad-hoc Python commands.
+source mlb-data-pipeline/.venv/bin/activate
+
+# Generates parquet snapshot outputs under OUTPUT_DIR.
+make -C mlb-data-pipeline local-run START_SEASON=2024 END_SEASON=2024 OUTPUT_DIR=$(pwd)/mlb-data-pipeline/output
+```
+
+Note: if your default `python3` is 3.14+, install and use Python 3.12 for this pipeline so `pyarrow` can install from wheels:
+
+```bash
+brew install python@3.12
+make -C mlb-data-pipeline local-install PYTHON=python3.12
 make -C mlb-data-pipeline local-run START_SEASON=2024 END_SEASON=2024 OUTPUT_DIR=$(pwd)/mlb-data-pipeline/output
 ```
 

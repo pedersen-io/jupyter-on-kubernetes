@@ -99,6 +99,8 @@ def write_detail_dataset(detail_df: pd.DataFrame, detail_dir) -> int:
 
 
 def build_player_season_aggregates(detail_df: pd.DataFrame) -> pd.DataFrame:
+    import pandas as pd
+
     if detail_df.empty:
         return pd.DataFrame(
             columns=[
@@ -197,6 +199,8 @@ def build_player_season_aggregates(detail_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_player_career_aggregates(player_season_df: pd.DataFrame) -> pd.DataFrame:
+    import pandas as pd
+
     if player_season_df.empty:
         return pd.DataFrame(
             columns=[
@@ -261,6 +265,8 @@ def build_player_career_aggregates(player_season_df: pd.DataFrame) -> pd.DataFra
 
 
 def build_team_season_aggregates(detail_df: pd.DataFrame) -> pd.DataFrame:
+    import pandas as pd
+
     if detail_df.empty:
         return pd.DataFrame(
             columns=[
@@ -355,6 +361,8 @@ def build_team_season_aggregates(detail_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_team_career_aggregates(team_season_df: pd.DataFrame) -> pd.DataFrame:
+    import pandas as pd
+
     if team_season_df.empty:
         return pd.DataFrame(
             columns=[

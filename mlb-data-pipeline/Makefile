@@ -4,6 +4,9 @@ IMAGE_REPO ?= us.gcr.io/${GCLOUD_PROJECT_ID}/mlb-data-pipeline
 IMAGE_TAG ?= ${GIT_COMMIT_SHA}
 IMAGE ?= ${IMAGE_REPO}:${IMAGE_TAG}
 PYTHON ?= python3
+VENV_DIR ?= .venv
+VENV_PYTHON ?= ${VENV_DIR}/bin/python
+RUN_PYTHON ?= $(if $(wildcard ${VENV_PYTHON}),${VENV_PYTHON},${PYTHON})
 START_SEASON ?= 2024
 END_SEASON ?= 2024
 OUTPUT_DIR ?= $(CURDIR)/output
@@ -26,20 +29,22 @@ docker:
 	docker build ./ -t mlb-data-pipeline
 
 local-install:
-	${PYTHON} -m pip install -r ./requirements.txt
+	${PYTHON} -m venv ${VENV_DIR}
+	${VENV_PYTHON} -m pip install --upgrade pip
+	${VENV_PYTHON} -m pip install -r ./requirements.txt
 
 local-run:
 	mkdir -p "${OUTPUT_DIR}"
 	START_SEASON=${START_SEASON} END_SEASON=${END_SEASON} OUTPUT_DIR="${OUTPUT_DIR}" \
 	SAMPLE_MODE=${SAMPLE_MODE} SAMPLE_START_DATE=${SAMPLE_START_DATE} SAMPLE_END_DATE=${SAMPLE_END_DATE} \
 	SAMPLE_MAX_ROWS=${SAMPLE_MAX_ROWS} SAMPLE_MAX_WINDOWS=${SAMPLE_MAX_WINDOWS} SAMPLE_RANDOM_STATE=${SAMPLE_RANDOM_STATE} \
-	${PYTHON} ./download_and_convert.py
+	${RUN_PYTHON} ./download_and_convert.py
 
 local-run-sample:
 	mkdir -p "${OUTPUT_DIR}"
 	START_SEASON=${START_SEASON} END_SEASON=${END_SEASON} OUTPUT_DIR="${OUTPUT_DIR}" \
 	SAMPLE_MODE=true SAMPLE_MAX_ROWS=${SAMPLE_MAX_ROWS} SAMPLE_MAX_WINDOWS=${SAMPLE_MAX_WINDOWS} SAMPLE_RANDOM_STATE=${SAMPLE_RANDOM_STATE} \
-	${PYTHON} ./download_and_convert.py
+	${RUN_PYTHON} ./download_and_convert.py
 
 local-run-docker: docker
 	mkdir -p "${OUTPUT_DIR}"
@@ -70,7 +75,7 @@ local-run-sample-docker: docker
 		mlb-data-pipeline
 
 test:
-	${PYTHON} -m unittest discover -s ./tests -p 'test_*.py'
+	${RUN_PYTHON} -m unittest discover -s ./tests -p 'test_*.py'
 
 publish:
 	docker tag mlb-data-pipeline ${IMAGE}
