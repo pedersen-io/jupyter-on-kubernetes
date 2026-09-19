@@ -1,6 +1,6 @@
 export GIT_COMMIT_SHA = $(shell git rev-parse HEAD)
 
-IMAGE_REPO ?= us.gcr.io/${GCLOUD_PROJECT_ID}/mlb-data-pipeline
+IMAGE_REPO ?= docker.io/<dockerhub-user>/mlb-data-pipeline
 IMAGE_TAG ?= ${GIT_COMMIT_SHA}
 IMAGE ?= ${IMAGE_REPO}:${IMAGE_TAG}
 PYTHON ?= python3

@@ -29,20 +29,20 @@ make -C mlb-data-pipeline docker
 Publish image:
 
 ```bash
-make -C mlb-data-pipeline publish GCLOUD_PROJECT_ID=<project>
+make -C mlb-data-pipeline publish IMAGE_REPO=docker.io/<dockerhub-user>/mlb-data-pipeline
 ```
 
 Run one-off refresh job:
 
 ```bash
 kubectl apply -f mlb-data-pipeline/spaces-secret.example.yaml
-make -C mlb-data-pipeline run-job GCLOUD_PROJECT_ID=<project>
+make -C mlb-data-pipeline run-job IMAGE_REPO=docker.io/<dockerhub-user>/mlb-data-pipeline
 ```
 
 Apply weekly refresh cronjob:
 
 ```bash
-make -C mlb-data-pipeline apply-cronjob GCLOUD_PROJECT_ID=<project>
+make -C mlb-data-pipeline apply-cronjob IMAGE_REPO=docker.io/<dockerhub-user>/mlb-data-pipeline
 ```
 
 ## Local Testing
@@ -58,6 +58,30 @@ source mlb-data-pipeline/.venv/bin/activate
 
 # Generates parquet snapshot outputs under OUTPUT_DIR.
 make -C mlb-data-pipeline local-run START_SEASON=2024 END_SEASON=2024 OUTPUT_DIR=$(pwd)/mlb-data-pipeline/output
+```
+
+Full local historical backfill (populate all available missing history):
+
+```bash
+# Statcast availability starts in 2015, so use 2015 as the earliest season.
+make -C mlb-data-pipeline local-run \
+	PYTHON=python3.12 \
+	START_SEASON=2015 \
+	END_SEASON=$(date +%Y) \
+	INCREMENTAL_MODE=false \
+	OUTPUT_DIR=$(pwd)/mlb-data-pipeline/output
+```
+
+Continue filling any missing historical months in an existing local dataset:
+
+```bash
+make -C mlb-data-pipeline local-run \
+	PYTHON=python3.12 \
+	START_SEASON=2015 \
+	END_SEASON=$(date +%Y) \
+	INCREMENTAL_MODE=true \
+	TRAILER_MONTHS=1 \
+	OUTPUT_DIR=$(pwd)/mlb-data-pipeline/output
 ```
 
 Note: if your default `python3` is 3.14+, install and use Python 3.12 for this pipeline so `pyarrow` can install from wheels:

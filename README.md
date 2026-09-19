@@ -51,8 +51,8 @@ Typical workflow:
 
 ```bash
 make -C mlb-data-pipeline docker
-make -C mlb-data-pipeline publish GCLOUD_PROJECT_ID=<project>
-make -C mlb-data-pipeline run-job GCLOUD_PROJECT_ID=<project>
+make -C mlb-data-pipeline publish IMAGE_REPO=docker.io/<dockerhub-user>/mlb-data-pipeline
+make -C mlb-data-pipeline run-job IMAGE_REPO=docker.io/<dockerhub-user>/mlb-data-pipeline
 ```
 
 Local pipeline test workflow:
