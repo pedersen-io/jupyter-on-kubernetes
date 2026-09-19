@@ -6,6 +6,8 @@ The Python modules live directly under `src/` and the top-level `download_and_co
 
 The first run is designed to be a full historical load. After that, the Kubernetes CronJob runs in incremental mode and refreshes the newest data plus a one-month trailer so late corrections get picked up.
 
+Jupyter users can start from the shared notebook template copied into their workspace as `MLB_Data_Starter.ipynb`.
+
 ## Outputs
 
 - Detail dataset: partitioned by `season` and `month`

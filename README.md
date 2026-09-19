@@ -64,6 +64,17 @@ make -C mlb-data-pipeline local-run START_SEASON=2024 END_SEASON=2024 OUTPUT_DIR
 
 DigitalOcean Spaces credentials are supplied through a Kubernetes secret named `do-spaces-baseball`.
 
+## Shared Notebook Template
+
+The notebook image now includes a shared starter notebook for MLB analysis:
+
+- Template source: `jupyter-datascience-notebook/templates/MLB_Data_Starter.ipynb`
+- Auto-copied on startup to each user workspace when missing:
+	- `/home/jovyan/work/MLB_Data_Starter.ipynb`
+	- `/home/jovyan/assignments/MLB_Data_Starter.ipynb`
+
+This provides a common starting point for querying latest pipeline snapshots.
+
 ## CI/CD
 
 - `Jenkinsfile` defines build, test, and deploy stages.
