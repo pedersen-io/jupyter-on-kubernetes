@@ -1,5 +1,5 @@
 import calendar
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Iterable, List, Optional, Tuple
 
 from config import Config
@@ -43,7 +43,7 @@ def iter_date_windows(start_date: date, end_date: date, max_windows: Optional[in
 
 def full_refresh_windows(config: Config) -> List[Tuple[int, int, str, str]]:
     start_date = date(config.start_season, 1, 1)
-    end_year = min(config.end_season, datetime.utcnow().year)
+    end_year = min(config.end_season, datetime.now(timezone.utc).year)
     end_date = min(date(end_year, 12, 31), date.today())
     return list(iter_date_windows(start_date, end_date, max_windows=config.sample_max_windows if config.sample_mode else None))
 

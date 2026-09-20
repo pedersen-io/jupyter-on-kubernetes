@@ -43,7 +43,7 @@ Run one-off refresh job:
 
 ```bash
 kubectl apply -f mlb-data-pipeline/spaces-secret.example.yaml
-make -C mlb-data-pipeline run-job IMAGE_REPO=docker.io/<dockerhub-user>/mlb-data-pipeline
+make -C mlb-data-pipeline run-bootstrap-job IMAGE_REPO=docker.io/<dockerhub-user>/mlb-data-pipeline
 ```
 
 Apply weekly refresh cronjob:
@@ -51,6 +51,25 @@ Apply weekly refresh cronjob:
 ```bash
 make -C mlb-data-pipeline apply-cronjob IMAGE_REPO=docker.io/<dockerhub-user>/mlb-data-pipeline
 ```
+
+## Make Targets
+
+- `docker`: build the local Docker image
+- `publish`: tag and push the Docker image to `IMAGE_REPO`
+- `local-install`: create/update the local virtualenv and install Python dependencies
+- `local-run`: run locally and write parquet only to `OUTPUT_DIR` with upload forced off
+- `local-run-upload`: run locally, write parquet to `OUTPUT_DIR`, and upload to Spaces when `SPACES_*` is configured
+- `local-bootstrap`: full historical local bootstrap with upload forced off
+- `local-bootstrap-upload`: full historical local bootstrap plus upload to Spaces
+- `local-run-sample`: local sample/debug run with upload forced off
+- `local-run-docker`: run the container locally with a bind-mounted output directory and upload forced off
+- `local-run-sample-docker`: sampled Docker run with a bind-mounted output directory and upload forced off
+- `test`: run the Python test suite
+- `run-bootstrap-job`: render and apply the one-off Kubernetes bootstrap job
+- `run-job`: alias for the same rendered one-off bootstrap job
+- `apply-cronjob`: render and apply the incremental Kubernetes CronJob
+- `apply-spaces-secret-example`: apply the example Spaces secret manifest
+- `clean`: remove rendered Kubernetes manifests
 
 ## Local Testing
 
@@ -67,18 +86,36 @@ source mlb-data-pipeline/.venv/bin/activate
 make -C mlb-data-pipeline local-run START_SEASON=2024 END_SEASON=2024 OUTPUT_DIR=$(pwd)/mlb-data-pipeline/output
 ```
 
+`local-run`, `local-bootstrap`, and the sample local targets force `UPLOAD_ENABLED=false`, so they stay local even if `SPACES_*` variables are already exported in your shell.
+
 Full local historical backfill for this pipeline (Lahman pre-2015 + Statcast 2015+):
 
 ```bash
 # Baseball predates Statcast. Enable Lahman to fill pre-2015 aggregates.
-make -C mlb-data-pipeline local-run \
+make -C mlb-data-pipeline local-bootstrap \
 	PYTHON=python3.12 \
-	START_SEASON=1871 \
-	END_SEASON=$(date +%Y) \
-	LAHMAN_ENABLED=true \
-	INCREMENTAL_MODE=false \
 	OUTPUT_DIR=$(pwd)/mlb-data-pipeline/output
 ```
+
+Bootstrap locally and publish the initial snapshot to the same Spaces bucket and prefix that the CronJob will later read:
+
+```bash
+cd mlb-data-pipeline
+export SPACES_BUCKET=your-bucket
+export SPACES_REGION=your-region
+export SPACES_ENDPOINT=https://your-region.digitaloceanspaces.com
+export SPACES_ACCESS_KEY_ID=your-access-key
+export SPACES_SECRET_ACCESS_KEY=your-secret-key
+make local-bootstrap-upload PYTHON=python3.12 OUTPUT_DIR=$(pwd)/output
+```
+
+That bootstrap run must upload `latest.json` and the snapshot manifest to Spaces. The scheduled incremental job depends on those files to avoid falling back to a first-pass build.
+
+At startup, the pipeline now runs a storage preflight: it fails on partial `SPACES_*` configuration, verifies bucket access when Spaces is enabled, and reports whether the target already has `latest.json`.
+
+Uploads are now explicit. Use `local-run-upload` or `local-bootstrap-upload` when you intend to publish to Spaces. Use `local-run` or `local-bootstrap` when you intend to stay local only.
+
+The Docker-based local targets are also local-only by default. If you ever want a Docker-based local upload target, add one intentionally rather than relying on inherited shell state.
 
 Local runs use pretty progress output by default (phase markers, color, progress bars, ETA).
 Disable it for plain logs:
@@ -102,6 +139,23 @@ make -C mlb-data-pipeline local-run \
 	TRAILER_MONTHS=1 \
 	OUTPUT_DIR=$(pwd)/mlb-data-pipeline/output
 ```
+
+Protect an incremental run from accidentally turning into a first-pass historical build:
+
+```bash
+make -C mlb-data-pipeline local-run \
+	PYTHON=python3.12 \
+	START_SEASON=2015 \
+	END_SEASON=$(date +%Y) \
+	INCREMENTAL_MODE=true \
+	REQUIRE_EXISTING_SNAPSHOT=true \
+	TRAILER_MONTHS=1 \
+	OUTPUT_DIR=$(pwd)/mlb-data-pipeline/output
+```
+
+This is the recommended setting for low-memory scheduled jobs after you have already published an initial snapshot.
+
+For DOKS, keep the CronJob on the incremental path only. The checked-in CronJob now sets `REQUIRE_EXISTING_SNAPSHOT=true` and uses a 1 GiB memory request/limit. If the bootstrap snapshot is missing, the job will fail fast instead of attempting a historical rebuild.
 
 Optional explicit player mapping for cross-source identity stitching:
 
@@ -164,7 +218,9 @@ INCREMENTAL_MODE=true TRAILER_MONTHS=1
 - `END_SEASON` default current year
 - `OUTPUT_DIR` default `/tmp/output`
 - `DATASET_PREFIX` default `baseball`
+- `UPLOAD_ENABLED` default `false` (`true` is required before any Spaces upload will happen, even if `SPACES_*` variables are set)
 - `INCREMENTAL_MODE` default `true`
+- `REQUIRE_EXISTING_SNAPSHOT` default `false` (`true` makes incremental runs fail fast instead of falling back to a first-pass historical build)
 - `TRAILER_MONTHS` default `1`
 - `STATCAST_START_SEASON` default `2015`
 - `LAHMAN_ENABLED` default `false`
@@ -186,4 +242,4 @@ INCREMENTAL_MODE=true TRAILER_MONTHS=1
 - `SPACES_ACCESS_KEY_ID` required for upload
 - `SPACES_SECRET_ACCESS_KEY` required for upload
 
-If Spaces variables are omitted, the script still writes local Parquet outputs under `OUTPUT_DIR`.
+Uploads require both `UPLOAD_ENABLED=true` and a complete `SPACES_*` configuration. Otherwise, the script writes local Parquet outputs under `OUTPUT_DIR` only.

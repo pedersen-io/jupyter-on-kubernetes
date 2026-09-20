@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: baseball-data-refresh-%GIT_COMMIT_SHA%
+  name: baseball-data-bootstrap-%GIT_COMMIT_SHA%
   labels:
     app: baseball-mlb-data-pipeline
 spec:
@@ -18,13 +18,25 @@ spec:
         image: %DATA_PIPELINE_IMAGE%
         env:
         - name: START_SEASON
-          value: "2015"
+          value: "1871"
         - name: END_SEASON
           value: "2026"
         - name: OUTPUT_DIR
           value: "/tmp/output"
         - name: DATASET_PREFIX
           value: "baseball"
+        - name: UPLOAD_ENABLED
+          value: "true"
+        - name: INCREMENTAL_MODE
+          value: "false"
+        - name: REQUIRE_EXISTING_SNAPSHOT
+          value: "false"
+        - name: LAHMAN_ENABLED
+          value: "true"
+        - name: LAHMAN_START_SEASON
+          value: "1871"
+        - name: LAHMAN_END_SEASON
+          value: "2014"
         - name: SPACES_BUCKET
           valueFrom:
             secretKeyRef:
@@ -53,7 +65,7 @@ spec:
         resources:
           requests:
             cpu: "750m"
-            memory: "2Gi"
+            memory: "4Gi"
           limits:
             cpu: "2"
             memory: "8Gi"

@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import os
 import sys
 import resource
@@ -37,6 +37,10 @@ from windows import add_months, full_refresh_windows, iter_date_windows, month_s
 def log_metric(name: str, **values) -> None:
     fields = " ".join(f"{key}={value}" for key, value in values.items())
     print(f"METRIC {name} {fields}".rstrip())
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 def bytes_to_gb(value: int) -> float:
@@ -78,6 +82,50 @@ def filesystem_free_bytes(path) -> Optional[int]:
         return None
 
 
+def preflight_storage_target(config: Config, client) -> dict:
+    spaces_fields = {
+        "SPACES_BUCKET": config.spaces_bucket,
+        "SPACES_REGION": config.spaces_region,
+        "SPACES_ENDPOINT": config.spaces_endpoint,
+        "SPACES_ACCESS_KEY_ID": config.spaces_access_key_id,
+        "SPACES_SECRET_ACCESS_KEY": config.spaces_secret_access_key,
+    }
+    provided = sorted(name for name, value in spaces_fields.items() if value)
+    missing = sorted(name for name, value in spaces_fields.items() if not value)
+
+    if config.upload_enabled and provided and missing:
+        raise ValueError(
+            "Incomplete Spaces configuration. Set all SPACES_* variables or none. "
+            f"Missing: {', '.join(missing)}"
+        )
+
+    if not config.upload_enabled:
+        return {
+            "mode": "local",
+            "latest_snapshot_present": False,
+            "latest_snapshot_id": None,
+            "bucket": None,
+            "upload_enabled": False,
+        }
+
+    if client is None:
+        raise ValueError(
+            "UPLOAD_ENABLED=true requires all SPACES_* variables to be set."
+        )
+
+    assert config.spaces_bucket is not None
+
+    client.head_bucket(Bucket=config.spaces_bucket)
+    latest_pointer = read_latest_pointer(config, client)
+    return {
+        "mode": "spaces",
+        "latest_snapshot_present": latest_pointer is not None,
+        "latest_snapshot_id": latest_pointer.get("snapshot_id") if latest_pointer is not None else None,
+        "bucket": config.spaces_bucket,
+        "upload_enabled": True,
+    }
+
+
 def build_manifest(
     config: Config,
     snapshot_id: str,
@@ -93,7 +141,7 @@ def build_manifest(
 ) -> dict:
     return {
         "snapshot_id": snapshot_id,
-        "generated_at_utc": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generated_at_utc": utc_now().strftime("%Y-%m-%dT%H:%M:%SZ"),
         "source": {
             "dataset": "statcast",
             "datasets": source_datasets,
@@ -142,7 +190,7 @@ def build_latest_pointer(config: Config, snapshot_id: str, manifest_path: str, w
         "detail_path": f"{config.dataset_prefix}/snapshots/{snapshot_id}/detail/",
         "window_start_date": window_start_date,
         "window_end_date": window_end_date,
-        "updated_at_utc": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "updated_at_utc": utc_now().strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
 
 
@@ -160,6 +208,11 @@ def build_refresh_windows(config: Config, client) -> Tuple[List[Tuple[int, int, 
         windows = list(iter_date_windows(parse_date(config.sample_start_date), parse_date(config.sample_end_date)))
     elif config.incremental_mode:
         if latest_end_date_value is None:
+            if config.require_existing_snapshot:
+                raise ValueError(
+                    "INCREMENTAL_MODE requires an existing snapshot, but no latest snapshot was found. "
+                    "Run an initial bootstrap build first or set REQUIRE_EXISTING_SNAPSHOT=false."
+                )
             print("No previous snapshot found; running first-pass full historical build.")
             windows = full_refresh_windows(config)
         else:
@@ -254,8 +307,28 @@ def main() -> None:
     run_started = time.time()
     config = get_config()
     reporter = LocalProgressReporter(config.pretty_local_output)
-    snapshot_id = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    snapshot_id = utc_now().strftime("%Y%m%dT%H%M%SZ")
     client = create_s3_client(config)
+    preflight = preflight_storage_target(config, client)
+
+    reporter.phase("Storage Preflight", preflight["mode"])
+    if preflight["mode"] == "local":
+        reporter.info("Remote upload disabled; run will write locally only.")
+        log_metric("storage_preflight", mode="local", upload_enabled="false", latest_snapshot="not_checked")
+    else:
+        latest_state = "present" if preflight["latest_snapshot_present"] else "absent"
+        reporter.info(
+            f"bucket={preflight['bucket']} latest_json={latest_state} "
+            f"snapshot={preflight['latest_snapshot_id'] or 'none'}"
+        )
+        log_metric(
+            "storage_preflight",
+            mode="spaces",
+            upload_enabled="true",
+            bucket=preflight["bucket"],
+            latest_snapshot=latest_state,
+            snapshot_id=(preflight["latest_snapshot_id"] or "none"),
+        )
 
     reporter.phase("Plan Refresh", f"start={config.start_season} end={config.end_season}")
     windows, window_start_date, window_end_date = build_refresh_windows(config, client)

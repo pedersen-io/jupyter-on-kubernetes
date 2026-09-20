@@ -1,6 +1,6 @@
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -21,7 +21,9 @@ class Config:
     end_season: int
     output_dir: Path
     dataset_prefix: str
+    upload_enabled: bool
     incremental_mode: bool
+    require_existing_snapshot: bool
     trailer_months: int
     sample_mode: bool
     sample_start_date: Optional[str]
@@ -45,10 +47,12 @@ class Config:
 
 
 def get_config() -> Config:
-    current_year = datetime.utcnow().year
+    current_year = datetime.now(timezone.utc).year
     start_season = int(os.getenv("START_SEASON", "2015"))
     end_season = int(os.getenv("END_SEASON", str(current_year)))
+    upload_enabled = parse_bool(os.getenv("UPLOAD_ENABLED", "false"))
     incremental_mode = parse_bool(os.getenv("INCREMENTAL_MODE", "true"))
+    require_existing_snapshot = parse_bool(os.getenv("REQUIRE_EXISTING_SNAPSHOT", "false"))
     trailer_months = parse_int(os.getenv("TRAILER_MONTHS"), 1)
     sample_mode = parse_bool(os.getenv("SAMPLE_MODE", "false"))
     sample_start_date = os.getenv("SAMPLE_START_DATE")
@@ -92,7 +96,9 @@ def get_config() -> Config:
         end_season=end_season,
         output_dir=Path(os.getenv("OUTPUT_DIR", "/tmp/output")),
         dataset_prefix=os.getenv("DATASET_PREFIX", "baseball"),
+        upload_enabled=upload_enabled,
         incremental_mode=incremental_mode,
+        require_existing_snapshot=require_existing_snapshot,
         trailer_months=trailer_months,
         sample_mode=sample_mode,
         sample_start_date=sample_start_date,

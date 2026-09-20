@@ -26,7 +26,11 @@ spec:
               value: "/tmp/output"
             - name: DATASET_PREFIX
               value: "baseball"
+            - name: UPLOAD_ENABLED
+              value: "true"
             - name: INCREMENTAL_MODE
+              value: "true"
+            - name: REQUIRE_EXISTING_SNAPSHOT
               value: "true"
             - name: TRAILER_MONTHS
               value: "1"
@@ -58,7 +62,7 @@ spec:
             resources:
               requests:
                 cpu: "750m"
-                memory: "2Gi"
+                memory: "1Gi"
               limits:
                 cpu: "2"
-                memory: "8Gi"
+                memory: "1Gi"

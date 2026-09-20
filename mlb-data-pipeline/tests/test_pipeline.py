@@ -1,6 +1,6 @@
 from datetime import date
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import unittest
 
 import test_helpers  # noqa: F401
@@ -11,7 +11,7 @@ except ModuleNotFoundError:  # pragma: no cover - environment dependent
     pd = None
 
 from config import Config
-from pipeline import add_career_source_column, build_latest_pointer, build_manifest, build_refresh_windows, merge_season_aggregates
+from pipeline import add_career_source_column, build_latest_pointer, build_manifest, build_refresh_windows, merge_season_aggregates, preflight_storage_target
 
 
 class PipelineTests(unittest.TestCase):
@@ -21,7 +21,9 @@ class PipelineTests(unittest.TestCase):
             end_season=2024,
             output_dir=Path("/tmp/output"),
             dataset_prefix="baseball",
+            upload_enabled=False,
             incremental_mode=True,
+            require_existing_snapshot=False,
             trailer_months=1,
             sample_mode=False,
             sample_start_date=None,
@@ -77,6 +79,14 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(start_date, "2024-01-01")
         self.assertEqual(end_date, "2024-12-31")
 
+    def test_build_refresh_windows_requires_existing_snapshot_when_configured(self):
+        config = self.build_config()
+        config.require_existing_snapshot = True
+
+        with patch("pipeline.latest_processed_end_date", return_value=None):
+            with self.assertRaisesRegex(ValueError, "requires an existing snapshot"):
+                build_refresh_windows(config, client=None)
+
     def test_build_refresh_windows_incremental_adds_trailer_and_missing_months(self):
         config = self.build_config()
         latest_pointer = {
@@ -94,6 +104,63 @@ class PipelineTests(unittest.TestCase):
         self.assertNotIn((2024, 1, "2024-01-01", "2024-01-31"), windows)
         self.assertEqual(start_date, "2024-02-01")
         self.assertEqual(end_date, date.today().strftime("%Y-%m-%d"))
+
+    def test_preflight_storage_target_rejects_partial_spaces_config(self):
+        config = self.build_config()
+        config.upload_enabled = True
+        config.spaces_bucket = "baseball-bucket"
+
+        with self.assertRaisesRegex(ValueError, "Incomplete Spaces configuration"):
+            preflight_storage_target(config, client=None)
+
+    def test_preflight_storage_target_checks_bucket_and_reports_latest_pointer_state(self):
+        config = self.build_config()
+        config.spaces_bucket = "baseball-bucket"
+        config.spaces_region = "nyc3"
+        config.spaces_endpoint = "https://nyc3.digitaloceanspaces.com"
+        config.spaces_access_key_id = "key"
+        config.spaces_secret_access_key = "secret"
+        config.upload_enabled = True
+        client = Mock()
+
+        with patch("pipeline.read_latest_pointer", return_value=None):
+            preflight = preflight_storage_target(config, client)
+
+        client.head_bucket.assert_called_once_with(Bucket="baseball-bucket")
+        self.assertEqual(preflight["mode"], "spaces")
+        self.assertFalse(preflight["latest_snapshot_present"])
+        self.assertIsNone(preflight["latest_snapshot_id"])
+
+    def test_preflight_storage_target_reports_existing_latest_pointer(self):
+        config = self.build_config()
+        config.spaces_bucket = "baseball-bucket"
+        config.spaces_region = "nyc3"
+        config.spaces_endpoint = "https://nyc3.digitaloceanspaces.com"
+        config.spaces_access_key_id = "key"
+        config.spaces_secret_access_key = "secret"
+        config.upload_enabled = True
+        client = Mock()
+        latest_pointer = {"snapshot_id": "snap-123"}
+
+        with patch("pipeline.read_latest_pointer", return_value=latest_pointer):
+            preflight = preflight_storage_target(config, client)
+
+        client.head_bucket.assert_called_once_with(Bucket="baseball-bucket")
+        self.assertTrue(preflight["latest_snapshot_present"])
+        self.assertEqual(preflight["latest_snapshot_id"], "snap-123")
+
+    def test_preflight_storage_target_stays_local_when_upload_disabled(self):
+        config = self.build_config()
+        config.spaces_bucket = "baseball-bucket"
+        config.spaces_region = "nyc3"
+        config.spaces_endpoint = "https://nyc3.digitaloceanspaces.com"
+        config.spaces_access_key_id = "key"
+        config.spaces_secret_access_key = "secret"
+
+        preflight = preflight_storage_target(config, client=None)
+
+        self.assertEqual(preflight["mode"], "local")
+        self.assertFalse(preflight["upload_enabled"])
 
     @unittest.skipIf(pd is None, "pandas is not installed in this environment")
     def test_merge_season_aggregates_prefers_statcast(self):

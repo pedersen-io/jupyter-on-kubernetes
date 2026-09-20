@@ -32,6 +32,9 @@ def resolve_local_manifest_path(config: Config, manifest_path: str) -> Path:
 
 
 def create_s3_client(config: Config):
+    if not config.upload_enabled:
+        return None
+
     if not all([
         config.spaces_bucket,
         config.spaces_region,
