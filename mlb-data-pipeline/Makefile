@@ -29,7 +29,7 @@ SOURCE_OVERLAP_POLICY ?= statcast_preferred
 PRETTY_LOCAL_OUTPUT ?= true
 UPLOAD_ENABLED ?= false
 
-.PHONY: render-job render-cronjob docker publish run-job run-bootstrap-job apply-cronjob apply-spaces-secret-example clean local-install local-run local-run-upload local-bootstrap local-bootstrap-upload local-run-docker local-run-sample local-run-sample-docker test
+.PHONY: render-job render-cronjob docker publish run-job run-bootstrap-job apply-cronjob apply-spaces-secret-example clean local-install local-run local-run-upload local-bootstrap local-bootstrap-upload local-run-docker local-run-sample local-run-sample-docker local-wizard bootstrap-estimate test
 
 render-job:
 	sed -e 's|%DATA_PIPELINE_IMAGE%|${IMAGE}|g' -e 's|%GIT_COMMIT_SHA%|${GIT_COMMIT_SHA}|g' ./kubernetes-job.yaml > ./kubernetes-job.rendered.yaml
@@ -44,6 +44,20 @@ local-install:
 	${PYTHON} -m venv ${VENV_DIR}
 	${VENV_PYTHON} -m pip install --upgrade pip
 	${VENV_PYTHON} -m pip install -r ./requirements.txt
+
+local-wizard:
+	${RUN_PYTHON} ./local_wizard.py
+
+bootstrap-estimate:
+	START_SEASON=1871 END_SEASON=${CURRENT_YEAR} OUTPUT_DIR="${OUTPUT_DIR}" \
+	UPLOAD_ENABLED=${UPLOAD_ENABLED} \
+	INCREMENTAL_MODE=false REQUIRE_EXISTING_SNAPSHOT=false TRAILER_MONTHS=${TRAILER_MONTHS} \
+	LAHMAN_ENABLED=true LAHMAN_START_SEASON=${LAHMAN_START_SEASON} LAHMAN_END_SEASON=${LAHMAN_END_SEASON} \
+	LAHMAN_PLAYER_MAPPING_PATH=${LAHMAN_PLAYER_MAPPING_PATH} LAHMAN_INCLUDE_OVERLAP=${LAHMAN_INCLUDE_OVERLAP} \
+	SOURCE_OVERLAP_POLICY=${SOURCE_OVERLAP_POLICY} PRETTY_LOCAL_OUTPUT=false \
+	SAMPLE_MODE=false SAMPLE_START_DATE= SAMPLE_END_DATE= \
+	SAMPLE_MAX_ROWS=${SAMPLE_MAX_ROWS} SAMPLE_MAX_WINDOWS=${SAMPLE_MAX_WINDOWS} SAMPLE_RANDOM_STATE=${SAMPLE_RANDOM_STATE} \
+	${RUN_PYTHON} ./bootstrap_estimate.py
 
 local-run:
 	mkdir -p "${OUTPUT_DIR}"

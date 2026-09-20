@@ -57,6 +57,8 @@ make -C mlb-data-pipeline apply-cronjob IMAGE_REPO=docker.io/<dockerhub-user>/ml
 - `docker`: build the local Docker image
 - `publish`: tag and push the Docker image to `IMAGE_REPO`
 - `local-install`: create/update the local virtualenv and install Python dependencies
+- `local-wizard`: interactive terminal wizard for choosing local/sample/bootstrap/upload run modes
+- `bootstrap-estimate`: print the planned bootstrap window count and a rough runtime estimate for this machine
 - `local-run`: run locally and write parquet only to `OUTPUT_DIR` with upload forced off
 - `local-run-upload`: run locally, write parquet to `OUTPUT_DIR`, and upload to Spaces when `SPACES_*` is configured
 - `local-bootstrap`: full historical local bootstrap with upload forced off
@@ -86,6 +88,18 @@ source mlb-data-pipeline/.venv/bin/activate
 make -C mlb-data-pipeline local-run START_SEASON=2024 END_SEASON=2024 OUTPUT_DIR=$(pwd)/mlb-data-pipeline/output
 ```
 
+If you want the terminal to ask what kind of run you want instead of remembering target names, use:
+
+```bash
+make -C mlb-data-pipeline local-wizard
+```
+
+If you want a quick estimate before starting a full first bootstrap, use:
+
+```bash
+make -C mlb-data-pipeline bootstrap-estimate
+```
+
 `local-run`, `local-bootstrap`, and the sample local targets force `UPLOAD_ENABLED=false`, so they stay local even if `SPACES_*` variables are already exported in your shell.
 
 Full local historical backfill for this pipeline (Lahman pre-2015 + Statcast 2015+):
@@ -96,6 +110,17 @@ make -C mlb-data-pipeline local-bootstrap \
 	PYTHON=python3.12 \
 	OUTPUT_DIR=$(pwd)/mlb-data-pipeline/output
 ```
+
+Expected bootstrap runtime on a current developer Mac:
+
+- The full `local-bootstrap` path does **not** fetch monthly data back to 1871.
+- Statcast detail begins in 2015, so as of 2026-09-19 the bootstrap fetch plan is about `141` monthly Statcast windows.
+- Lahman covers pre-2015 historical aggregates and is typically much cheaper than the Statcast fetch.
+- Based on observed local timing where active in-season months take roughly `10-20s` each and offseason months are much lighter, a cold first bootstrap on this machine should be expected to take roughly `30-60 minutes`.
+- Treat `60-90 minutes` as a safer upper-bound if Baseball Savant is slow, your network is noisy, or the machine is busy with other work.
+
+The pretty local output will show the planned years, current window, completed window, remaining years, and next windows so you can see whether the run is progressing at the rate you expect.
+During the fetch loop, pretty local output also shows a rolling `total_est` and `finish_in` projection based on the average time of completed windows so far.
 
 Bootstrap locally and publish the initial snapshot to the same Spaces bucket and prefix that the CronJob will later read:
 
@@ -125,7 +150,12 @@ make -C mlb-data-pipeline local-run PRETTY_LOCAL_OUTPUT=false
 ```
 
 Kubernetes job logging stays plain text unless you explicitly set `PRETTY_LOCAL_OUTPUT=true` there.
-In both local and k8s runs, the pipeline emits structured metric lines (prefixed with `METRIC`) and a final one-line `SUMMARY` for easier log scraping.
+Plain logs and Kubernetes runs emit structured metric lines (prefixed with `METRIC`) and a final one-line `SUMMARY` for easier log scraping. Pretty local output favors colored phase headers, progress bars, and summary cards instead.
+Pretty local output also shows:
+
+- planned years and window counts before fetch starts
+- a preview of the next windows in queue
+- after each completed window, the finished month, remaining window count, remaining years, and the next few windows
 
 Continue filling any missing historical months in an existing local dataset:
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import time
 from pathlib import Path
+from typing import Iterable, Tuple
 
 try:
     import psutil
@@ -26,16 +27,32 @@ class LocalProgressReporter:
             return "[" + ("-" * width) + "]"
         ratio = max(0.0, min(1.0, current / total))
         filled = int(width * ratio)
-        return "[" + ("#" * filled) + ("-" * (width - filled)) + "]"
+        if filled <= 0:
+            return "[" + ("." * width) + "]"
+        head = ">" if filled < width else "="
+        body = "=" * max(0, filled - 1)
+        tail = "." * max(0, width - filled)
+        return "[" + body + head + tail + "]"
+
+    def _section_rule(self, title: str, code: str) -> str:
+        label = f" {title.upper()} "
+        width = max(18, 76 - len(label))
+        left = "=" * (width // 2)
+        right = "=" * (width - len(left))
+        return self._paint(f"{left}{label}{right}", code)
+
+    def _format_entries(self, entries: Iterable[Tuple[str, str]]) -> str:
+        parts = []
+        for key, value in entries:
+            parts.append(f"{self._paint(key.upper(), '2;37')}: {self._paint(value, '1;97')}")
+        return "  |  ".join(parts)
 
     def phase(self, title: str, detail: str = "") -> None:
         if not self.enabled:
             return
-        prefix = self._paint("[phase]", "1;36")
+        print(self._section_rule(title, "1;36"))
         if detail:
-            print(f"{prefix} {title} - {detail}")
-        else:
-            print(f"{prefix} {title}")
+            print(f"{self._paint('context', '2;36')}: {detail}")
 
     def info(self, message: str) -> None:
         if not self.enabled:
@@ -57,7 +74,11 @@ class LocalProgressReporter:
             return
         bar = self._bar(current, total)
         pct = 0.0 if total <= 0 else (100.0 * current / total)
-        line = f"{self._paint('[progress]', '1;35')} {label} {bar} {current}/{total} ({pct:5.1f}%)"
+        line = (
+            f"{self._paint('[progress]', '1;35')} {self._paint(label.upper(), '1;95')} "
+            f"{self._paint(bar, '35')} {self._paint(f'{pct:5.1f}%', '1;97')} "
+            f"({current}/{total})"
+        )
         if extra:
             line += f" | {extra}"
         print(line)
@@ -68,6 +89,18 @@ class LocalProgressReporter:
         bar = self._bar(value, total, width=20)
         pct = 0.0 if total <= 0 else (100.0 * value / total)
         print(f"{self._paint('[metric]', '34')} {label:<10} {bar} {value} ({pct:5.1f}%)")
+
+    def card(self, title: str, entries: Iterable[Tuple[str, str]], tone: str = "34") -> None:
+        if not self.enabled:
+            return
+        print(self._section_rule(title, f"1;{tone}"))
+        print(self._format_entries(entries))
+
+    def summary(self, title: str, entries: Iterable[Tuple[str, str]]) -> None:
+        if not self.enabled:
+            return
+        print(self._section_rule(title, "1;32"))
+        print(self._format_entries(entries))
 
     def elapsed(self) -> float:
         return max(0.0, time.time() - self._start)

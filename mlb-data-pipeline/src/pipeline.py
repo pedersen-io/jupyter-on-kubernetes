@@ -34,9 +34,19 @@ from transforms import (
 from windows import add_months, full_refresh_windows, iter_date_windows, month_start, parse_date
 
 
+STRUCTURED_METRICS_ENABLED = True
+
+
 def log_metric(name: str, **values) -> None:
+    if not STRUCTURED_METRICS_ENABLED:
+        return
     fields = " ".join(f"{key}={value}" for key, value in values.items())
     print(f"METRIC {name} {fields}".rstrip())
+
+
+def set_structured_metrics_enabled(enabled: bool) -> None:
+    global STRUCTURED_METRICS_ENABLED
+    STRUCTURED_METRICS_ENABLED = enabled
 
 
 def utc_now() -> datetime:
@@ -307,6 +317,7 @@ def main() -> None:
     run_started = time.time()
     config = get_config()
     reporter = LocalProgressReporter(config.pretty_local_output)
+    set_structured_metrics_enabled(not config.pretty_local_output)
     snapshot_id = utc_now().strftime("%Y%m%dT%H%M%SZ")
     client = create_s3_client(config)
     preflight = preflight_storage_target(config, client)
@@ -315,6 +326,7 @@ def main() -> None:
     if preflight["mode"] == "local":
         reporter.info("Remote upload disabled; run will write locally only.")
         log_metric("storage_preflight", mode="local", upload_enabled="false", latest_snapshot="not_checked")
+        reporter.card("Storage", [("mode", "local"), ("upload", "disabled"), ("latest", "not checked")], tone="34")
     else:
         latest_state = "present" if preflight["latest_snapshot_present"] else "absent"
         reporter.info(
@@ -328,6 +340,11 @@ def main() -> None:
             bucket=preflight["bucket"],
             latest_snapshot=latest_state,
             snapshot_id=(preflight["latest_snapshot_id"] or "none"),
+        )
+        reporter.card(
+            "Storage",
+            [("mode", "spaces"), ("bucket", str(preflight["bucket"])), ("latest", latest_state), ("snapshot", str(preflight["latest_snapshot_id"] or "none"))],
+            tone="34",
         )
 
     reporter.phase("Plan Refresh", f"start={config.start_season} end={config.end_season}")
@@ -357,6 +374,16 @@ def main() -> None:
     reporter.info(
         f"window_start={window_start_date} window_end={window_end_date} statcast_windows={len(windows)}"
     )
+    reporter.card(
+        "Plan",
+        [
+            ("range", f"{window_start_date}..{window_end_date}"),
+            ("windows", str(len(windows))),
+            ("incremental", str(config.incremental_mode).lower()),
+            ("trailer", str(config.trailer_months)),
+        ],
+        tone="36",
+    )
 
     base_output = config.output_dir / config.dataset_prefix / snapshot_id
     detail_dir = base_output / "detail"
@@ -384,6 +411,16 @@ def main() -> None:
     reporter.info(
         f"detail_df={bytes_to_gb(detail_df_bytes):0.3f}GB detail_disk={bytes_to_gb(detail_disk_bytes):0.3f}GB "
         f"rss={(f'{bytes_to_gb(rss_after_detail):0.3f}GB' if rss_after_detail is not None else 'na')}"
+    )
+    reporter.card(
+        "Detail Metrics",
+        [
+            ("rows", str(detail_rows)),
+            ("frame", f"{bytes_to_gb(detail_df_bytes):0.3f} GB"),
+            ("disk", f"{bytes_to_gb(detail_disk_bytes):0.3f} GB"),
+            ("rss", f"{bytes_to_gb(rss_after_detail):0.3f} GB" if rss_after_detail is not None else "n/a"),
+        ],
+        tone="35",
     )
     reporter.success(f"detail rows written: {detail_rows}")
 
@@ -494,6 +531,17 @@ def main() -> None:
         f"aggregate_df={bytes_to_gb(aggregate_df_bytes):0.3f}GB aggregate_disk={bytes_to_gb(aggregate_disk_bytes):0.3f}GB "
         f"snapshot_disk={bytes_to_gb(total_output_disk_bytes):0.3f}GB"
     )
+    reporter.card(
+        "Aggregate Metrics",
+        [
+            ("player_season", str(len(player_season_df))),
+            ("player_career", str(len(player_career_df))),
+            ("team_season", str(len(team_season_df))),
+            ("team_career", str(len(team_career_df))),
+            ("snapshot", f"{bytes_to_gb(total_output_disk_bytes):0.3f} GB"),
+        ],
+        tone="33",
+    )
     reporter.success(
         "aggregate rows written: "
         f"player_season={len(player_season_df)} player_career={len(player_career_df)} "
@@ -526,22 +574,38 @@ def main() -> None:
     )
     write_json_file(local_latest_pointer_path(config), local_latest_pointer)
 
-    print(f"Wrote local snapshot to {base_output}")
+    if not config.pretty_local_output:
+        print(f"Wrote local snapshot to {base_output}")
     log_metric("snapshot_written", snapshot_id=snapshot_id, path=base_output)
     reporter.success(f"snapshot local path: {base_output}")
 
     if client is None:
-        print("Spaces variables not set, skipping upload.")
+        if not config.pretty_local_output:
+            print("Spaces variables not set, skipping upload.")
         elapsed_total = time.time() - run_started
         log_metric("run_complete", uploaded="false", elapsed_s=f"{elapsed_total:0.1f}")
-        print(
-            f"SUMMARY elapsed={elapsed_total:0.1f}s detail_rows={detail_rows} "
-            f"player_season={len(player_season_df)} team_season={len(team_season_df)} "
-            f"datasets={','.join(source_datasets) if source_datasets else 'none'} "
-            f"processed_gb={bytes_to_gb(detail_df_bytes + aggregate_df_bytes):0.3f} "
-            f"snapshot_disk_gb={bytes_to_gb(total_output_disk_bytes):0.3f} "
-            f"rss_gb={(f'{bytes_to_gb(rss_after_aggregates):0.3f}' if rss_after_aggregates is not None else 'na')}"
-        )
+        if config.pretty_local_output:
+            reporter.summary(
+                "Run Complete",
+                [
+                    ("mode", "local"),
+                    ("elapsed", f"{elapsed_total:0.1f}s"),
+                    ("detail_rows", str(detail_rows)),
+                    ("datasets", ",".join(source_datasets) if source_datasets else "none"),
+                    ("processed", f"{bytes_to_gb(detail_df_bytes + aggregate_df_bytes):0.3f} GB"),
+                    ("snapshot", f"{bytes_to_gb(total_output_disk_bytes):0.3f} GB"),
+                    ("rss", f"{bytes_to_gb(rss_after_aggregates):0.3f} GB" if rss_after_aggregates is not None else "n/a"),
+                ],
+            )
+        else:
+            print(
+                f"SUMMARY elapsed={elapsed_total:0.1f}s detail_rows={detail_rows} "
+                f"player_season={len(player_season_df)} team_season={len(team_season_df)} "
+                f"datasets={','.join(source_datasets) if source_datasets else 'none'} "
+                f"processed_gb={bytes_to_gb(detail_df_bytes + aggregate_df_bytes):0.3f} "
+                f"snapshot_disk_gb={bytes_to_gb(total_output_disk_bytes):0.3f} "
+                f"rss_gb={(f'{bytes_to_gb(rss_after_aggregates):0.3f}' if rss_after_aggregates is not None else 'na')}"
+            )
         return
 
     assert config.spaces_bucket is not None
@@ -551,15 +615,30 @@ def main() -> None:
     upload_directory(client, config.spaces_bucket, aggregates_dir, f"{snapshot_prefix}/aggregates")
     upload_manifest(client, config.spaces_bucket, manifest, f"{snapshot_prefix}/manifest.json")
     upload_manifest(client, config.spaces_bucket, local_latest_pointer, f"{config.dataset_prefix}/latest.json")
-    print(f"Uploaded snapshot {snapshot_id} to bucket {config.spaces_bucket}")
+    if not config.pretty_local_output:
+        print(f"Uploaded snapshot {snapshot_id} to bucket {config.spaces_bucket}")
     elapsed_total = time.time() - run_started
     log_metric("run_complete", uploaded="true", elapsed_s=f"{elapsed_total:0.1f}")
-    print(
-        f"SUMMARY elapsed={elapsed_total:0.1f}s detail_rows={detail_rows} "
-        f"player_season={len(player_season_df)} team_season={len(team_season_df)} "
-        f"datasets={','.join(source_datasets) if source_datasets else 'none'} "
-        f"processed_gb={bytes_to_gb(detail_df_bytes + aggregate_df_bytes):0.3f} "
-        f"snapshot_disk_gb={bytes_to_gb(total_output_disk_bytes):0.3f} "
-        f"rss_gb={(f'{bytes_to_gb(rss_after_aggregates):0.3f}' if rss_after_aggregates is not None else 'na')}"
-    )
+    if config.pretty_local_output:
+        reporter.summary(
+            "Run Complete",
+            [
+                ("mode", "upload"),
+                ("elapsed", f"{elapsed_total:0.1f}s"),
+                ("detail_rows", str(detail_rows)),
+                ("datasets", ",".join(source_datasets) if source_datasets else "none"),
+                ("processed", f"{bytes_to_gb(detail_df_bytes + aggregate_df_bytes):0.3f} GB"),
+                ("snapshot", f"{bytes_to_gb(total_output_disk_bytes):0.3f} GB"),
+                ("rss", f"{bytes_to_gb(rss_after_aggregates):0.3f} GB" if rss_after_aggregates is not None else "n/a"),
+            ],
+        )
+    else:
+        print(
+            f"SUMMARY elapsed={elapsed_total:0.1f}s detail_rows={detail_rows} "
+            f"player_season={len(player_season_df)} team_season={len(team_season_df)} "
+            f"datasets={','.join(source_datasets) if source_datasets else 'none'} "
+            f"processed_gb={bytes_to_gb(detail_df_bytes + aggregate_df_bytes):0.3f} "
+            f"snapshot_disk_gb={bytes_to_gb(total_output_disk_bytes):0.3f} "
+            f"rss_gb={(f'{bytes_to_gb(rss_after_aggregates):0.3f}' if rss_after_aggregates is not None else 'na')}"
+        )
     reporter.success(f"upload complete: snapshot={snapshot_id}")

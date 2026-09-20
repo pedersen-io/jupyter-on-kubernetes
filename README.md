@@ -69,14 +69,16 @@ Top-level MLB pipeline shortcuts:
 - `make mlb-data-pipeline-local-run-upload ...`
 - `make mlb-data-pipeline-local-bootstrap ...`
 - `make mlb-data-pipeline-local-bootstrap-upload ...`
+- `make mlb-data-pipeline-local-wizard`
+- `make mlb-data-pipeline-bootstrap-estimate`
 - `make mlb-data-pipeline-test`
 
 These are thin passthrough targets to the module-local Makefile. They exist for convenience only; the module-local `mlb-data-pipeline/Makefile` remains the source of truth for pipeline options and arguments.
 
 Recommended usage:
 
-- Use the explicit Make targets for local-only runs versus upload-enabled runs.
-- Do not add an interactive installer or prompt-driven wrapper unless the workflow becomes genuinely hard to operate non-interactively; today the Make targets and environment variables are simpler and easier to automate.
+- Use the explicit Make targets for scripts, CI, and repeatable runs.
+- Use `make mlb-data-pipeline-local-wizard` when you want the terminal to walk you through a one-off local pipeline run.
 
 DigitalOcean Spaces credentials are supplied through a Kubernetes secret named `do-spaces-baseball`.
 

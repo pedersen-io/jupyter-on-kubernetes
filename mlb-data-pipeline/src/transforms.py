@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import time
+import importlib
+import warnings
 from typing import Iterable, List, Tuple
 
 HIT_EVENTS = {"single", "double", "triple", "home_run"}
@@ -33,9 +35,93 @@ def add_rate_stats(df, hits_col: str, at_bats_col: str, walks_col: str, singles_
     return df
 
 
+def _event_equals(events, value: str):
+    return events.eq(value).fillna(False)
+
+
+def _event_in(events, values):
+    return events.isin(values).fillna(False)
+
+
+def _fetch_statcast_window(start_dt: str, end_dt: str, suppress_noise: bool):
+    from pybaseball.statcast import statcast
+    statcast_module = importlib.import_module("pybaseball.statcast")
+
+    if not suppress_noise:
+        return statcast(start_dt=start_dt, end_dt=end_dt, verbose=False)
+
+    original_tqdm = statcast_module.tqdm
+
+    def quiet_tqdm(*args, **kwargs):
+        kwargs = dict(kwargs)
+        kwargs["disable"] = True
+        return original_tqdm(*args, **kwargs)
+
+    statcast_module.tqdm = quiet_tqdm
+    try:
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=FutureWarning, message=r".*errors='ignore' is deprecated.*")
+            warnings.filterwarnings("ignore", category=FutureWarning, message=r".*all-NA entries.*")
+            return statcast(start_dt=start_dt, end_dt=end_dt, verbose=False)
+    finally:
+        statcast_module.tqdm = original_tqdm
+
+
+def _format_window_label(window: Tuple[int, int, str, str]) -> str:
+    year, month, _start_dt, _end_dt = window
+    return f"{year}-{month:02d}"
+
+
+def _format_duration(seconds: float) -> str:
+    total_seconds = max(0, int(round(seconds)))
+    minutes, secs = divmod(total_seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours > 0:
+        return f"{hours}h{minutes:02d}m"
+    if minutes > 0:
+        return f"{minutes}m{secs:02d}s"
+    return f"{secs}s"
+
+
+def _preview_windows(windows: List[Tuple[int, int, str, str]], limit: int = 5) -> str:
+    if not windows:
+        return "none"
+
+    labels = [_format_window_label(window) for window in windows[:limit]]
+    preview = ", ".join(labels)
+    if len(windows) > limit:
+        preview += f", ... (+{len(windows) - limit} more)"
+    return preview
+
+
+def _summarize_window_years(windows: List[Tuple[int, int, str, str]]) -> str:
+    if not windows:
+        return "none"
+
+    counts = {}
+    for year, _month, _start_dt, _end_dt in windows:
+        counts[year] = counts.get(year, 0) + 1
+    return ", ".join(f"{year}({count})" for year, count in sorted(counts.items()))
+
+
+def _window_queue_entries(windows: List[Tuple[int, int, str, str]]) -> List[Tuple[str, str]]:
+    if not windows:
+        return [("years", "none"), ("planned", "0"), ("first", "none"), ("last", "none")]
+
+    labels = [_format_window_label(window) for window in windows]
+    preview = _preview_windows(windows, limit=5)
+
+    return [
+        ("years", _summarize_window_years(windows)),
+        ("planned", str(len(windows))),
+        ("first", labels[0]),
+        ("last", labels[-1]),
+        ("preview", preview),
+    ]
+
+
 def fetch_detail_dataframe(config, windows: Iterable[Tuple[int, int, str, str]]) -> pd.DataFrame:
     import pandas as pd
-    from pybaseball import statcast
     from progress import LocalProgressReporter
 
     windows = list(windows)
@@ -47,6 +133,8 @@ def fetch_detail_dataframe(config, windows: Iterable[Tuple[int, int, str, str]])
     fetch_started = time.time()
 
     reporter.phase("Statcast Detail Fetch", f"{total_windows} window(s)")
+    if reporter.enabled:
+        reporter.card("Window Queue", _window_queue_entries(windows), tone="35")
 
     for idx, (year, month, start_dt, end_dt) in enumerate(windows, start=1):
         window_started = time.time()
@@ -54,14 +142,29 @@ def fetch_detail_dataframe(config, windows: Iterable[Tuple[int, int, str, str]])
             reporter.progress("windows", idx - 1, total_windows, extra=f"starting {start_dt}..{end_dt}")
         else:
             print(f"Fetching Statcast detail for {start_dt} to {end_dt}")
-        frame = statcast(start_dt=start_dt, end_dt=end_dt, verbose=False)
+        frame = _fetch_statcast_window(start_dt, end_dt, suppress_noise=reporter.enabled)
 
         if frame is None or frame.empty:
             if reporter.enabled:
                 elapsed = max(0.001, time.time() - fetch_started)
                 avg = elapsed / idx
                 eta = avg * (total_windows - idx)
-                reporter.progress("windows", idx, total_windows, extra=f"{start_dt}..{end_dt} rows=0 eta={eta:0.1f}s")
+                projected_total = avg * total_windows
+                reporter.progress(
+                    "windows",
+                    idx,
+                    total_windows,
+                    extra=f"{start_dt}..{end_dt} rows=0 eta={eta:0.1f}s total_est={_format_duration(projected_total)}",
+                )
+                next_label = _format_window_label(windows[idx]) if idx < total_windows else "none"
+                completed = windows[:idx]
+                remaining = windows[idx:]
+                reporter.info(
+                    f"completed={year}-{month:02d} done_years={_summarize_window_years(completed)} "
+                    f"remaining_years={_summarize_window_years(remaining)} remaining={total_windows - idx} "
+                    f"next={next_label} next_up={_preview_windows(remaining, limit=5)} "
+                    f"finish_in={_format_duration(eta)} total_est={_format_duration(projected_total)}"
+                )
             else:
                 elapsed = max(0.001, time.time() - fetch_started)
                 avg = elapsed / idx
@@ -86,6 +189,7 @@ def fetch_detail_dataframe(config, windows: Iterable[Tuple[int, int, str, str]])
             elapsed = max(0.001, time.time() - fetch_started)
             avg = elapsed / idx
             eta = avg * (total_windows - idx)
+            projected_total = avg * total_windows
             took = time.time() - window_started
             reporter.progress(
                 "windows",
@@ -93,8 +197,17 @@ def fetch_detail_dataframe(config, windows: Iterable[Tuple[int, int, str, str]])
                 total_windows,
                 extra=(
                     f"{start_dt}..{end_dt} rows={len(frame)} mem={frame_mem_bytes / (1024 ** 2):0.1f}MB "
-                    f"took={took:0.1f}s eta={eta:0.1f}s"
+                    f"took={took:0.1f}s eta={eta:0.1f}s total_est={_format_duration(projected_total)}"
                 ),
+            )
+            next_label = _format_window_label(windows[idx]) if idx < total_windows else "none"
+            completed = windows[:idx]
+            remaining = windows[idx:]
+            reporter.info(
+                f"completed={year}-{month:02d} done_years={_summarize_window_years(completed)} "
+                f"remaining_years={_summarize_window_years(remaining)} remaining={total_windows - idx} "
+                f"next={next_label} next_up={_preview_windows(remaining, limit=5)} "
+                f"finish_in={_format_duration(eta)} total_est={_format_duration(projected_total)}"
             )
         else:
             elapsed = max(0.001, time.time() - fetch_started)
@@ -197,14 +310,14 @@ def build_player_season_aggregates(detail_df: pd.DataFrame, source_system: str =
         + agg_source["batter"].astype("string")
     )
 
-    agg_source["is_hit"] = agg_source["events"].isin(HIT_EVENTS).astype(int)
-    agg_source["is_single"] = (agg_source["events"] == "single").astype(int)
-    agg_source["is_double"] = (agg_source["events"] == "double").astype(int)
-    agg_source["is_triple"] = (agg_source["events"] == "triple").astype(int)
-    agg_source["is_hr"] = (agg_source["events"] == "home_run").astype(int)
-    agg_source["is_walk"] = agg_source["events"].isin({"walk", "intent_walk"}).astype(int)
-    agg_source["is_strikeout"] = agg_source["events"].isin({"strikeout", "strikeout_double_play"}).astype(int)
-    agg_source["is_ab"] = (~agg_source["events"].isin(AB_EXCLUDED_EVENTS)).astype(int)
+    agg_source["is_hit"] = _event_in(agg_source["events"], HIT_EVENTS).astype(int)
+    agg_source["is_single"] = _event_equals(agg_source["events"], "single").astype(int)
+    agg_source["is_double"] = _event_equals(agg_source["events"], "double").astype(int)
+    agg_source["is_triple"] = _event_equals(agg_source["events"], "triple").astype(int)
+    agg_source["is_hr"] = _event_equals(agg_source["events"], "home_run").astype(int)
+    agg_source["is_walk"] = _event_in(agg_source["events"], {"walk", "intent_walk"}).astype(int)
+    agg_source["is_strikeout"] = _event_in(agg_source["events"], {"strikeout", "strikeout_double_play"}).astype(int)
+    agg_source["is_ab"] = (agg_source["events"].notna() & ~_event_in(agg_source["events"], AB_EXCLUDED_EVENTS)).astype(int)
 
     grouped = (
         agg_source.groupby(["batter", "season"], dropna=False)
@@ -372,14 +485,14 @@ def build_team_season_aggregates(detail_df: pd.DataFrame, source_system: str = "
         + "-"
         + agg_source["team"].astype("string")
     )
-    agg_source["is_hit"] = agg_source["events"].isin(HIT_EVENTS).astype(int)
-    agg_source["is_single"] = (agg_source["events"] == "single").astype(int)
-    agg_source["is_double"] = (agg_source["events"] == "double").astype(int)
-    agg_source["is_triple"] = (agg_source["events"] == "triple").astype(int)
-    agg_source["is_hr"] = (agg_source["events"] == "home_run").astype(int)
-    agg_source["is_walk"] = agg_source["events"].isin({"walk", "intent_walk"}).astype(int)
-    agg_source["is_strikeout"] = agg_source["events"].isin({"strikeout", "strikeout_double_play"}).astype(int)
-    agg_source["is_ab"] = (~agg_source["events"].isin(AB_EXCLUDED_EVENTS)).astype(int)
+    agg_source["is_hit"] = _event_in(agg_source["events"], HIT_EVENTS).astype(int)
+    agg_source["is_single"] = _event_equals(agg_source["events"], "single").astype(int)
+    agg_source["is_double"] = _event_equals(agg_source["events"], "double").astype(int)
+    agg_source["is_triple"] = _event_equals(agg_source["events"], "triple").astype(int)
+    agg_source["is_hr"] = _event_equals(agg_source["events"], "home_run").astype(int)
+    agg_source["is_walk"] = _event_in(agg_source["events"], {"walk", "intent_walk"}).astype(int)
+    agg_source["is_strikeout"] = _event_in(agg_source["events"], {"strikeout", "strikeout_double_play"}).astype(int)
+    agg_source["is_ab"] = (agg_source["events"].notna() & ~_event_in(agg_source["events"], AB_EXCLUDED_EVENTS)).astype(int)
 
     grouped = (
         agg_source.groupby(["team", "season"], dropna=False)
