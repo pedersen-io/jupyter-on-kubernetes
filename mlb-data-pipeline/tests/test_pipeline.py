@@ -38,10 +38,24 @@ class PipelineTests(unittest.TestCase):
 
     def test_build_manifest_includes_window_bounds(self):
         config = self.build_config()
-        manifest = build_manifest(config, "snap-1", "2024-04-01", "2024-04-30", ["statcast"], 10, 2, 1, 3, 2)
+        mapping_quality = {"mapped_player_ids_in_output": 10, "unmapped_player_ids_in_output": 2}
+        manifest = build_manifest(
+            config,
+            "snap-1",
+            "2024-04-01",
+            "2024-04-30",
+            ["statcast", "lahman"],
+            mapping_quality,
+            10,
+            2,
+            1,
+            3,
+            2,
+        )
         self.assertEqual(manifest["source"]["window_start_date"], "2024-04-01")
         self.assertEqual(manifest["source"]["window_end_date"], "2024-04-30")
-        self.assertEqual(manifest["source"]["datasets"], ["statcast"])
+        self.assertEqual(manifest["source"]["datasets"], ["statcast", "lahman"])
+        self.assertEqual(manifest["source"]["lahman_mapping_quality"], mapping_quality)
         self.assertEqual(manifest["outputs"]["detail"]["rows"], 10)
         self.assertIn("team_season_metrics", manifest["outputs"]["aggregates"])
         self.assertIn("team_career_metrics", manifest["outputs"]["aggregates"])

@@ -80,6 +80,16 @@ make -C mlb-data-pipeline local-run \
 	OUTPUT_DIR=$(pwd)/mlb-data-pipeline/output
 ```
 
+Local runs use pretty progress output by default (phase markers, color, progress bars, ETA).
+Disable it for plain logs:
+
+```bash
+make -C mlb-data-pipeline local-run PRETTY_LOCAL_OUTPUT=false
+```
+
+Kubernetes job logging stays plain text unless you explicitly set `PRETTY_LOCAL_OUTPUT=true` there.
+In both local and k8s runs, the pipeline emits structured metric lines (prefixed with `METRIC`) and a final one-line `SUMMARY` for easier log scraping.
+
 Continue filling any missing historical months in an existing local dataset:
 
 ```bash
@@ -163,6 +173,7 @@ INCREMENTAL_MODE=true TRAILER_MONTHS=1
 - `LAHMAN_PLAYER_MAPPING_PATH` optional path to CSV with `playerID` and one of `batter|mlbam_id|mlbamid|key_mlbam`
 - `LAHMAN_INCLUDE_OVERLAP` default `false` (when false, Lahman contributes pre-Statcast seasons only)
 - `SOURCE_OVERLAP_POLICY` default `statcast_preferred` (`statcast_preferred` or `lahman_preferred`)
+- `PRETTY_LOCAL_OUTPUT` default `false` (Make `local-run` targets set it to `true`; k8s manifests remain unchanged)
 - `SAMPLE_MODE` default `false`
 - `SAMPLE_START_DATE` optional `YYYY-MM-DD` (must be set with `SAMPLE_END_DATE`)
 - `SAMPLE_END_DATE` optional `YYYY-MM-DD` (must be set with `SAMPLE_START_DATE`)

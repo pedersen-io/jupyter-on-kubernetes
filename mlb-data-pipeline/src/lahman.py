@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import pandas as pd
 
@@ -14,11 +14,18 @@ def _require_columns(df: pd.DataFrame, required: list[str], table_name: str) -> 
         raise ValueError(f"{table_name} is missing required columns: {', '.join(missing)}")
 
 
-def _load_mapping(path: Optional[Path]) -> Optional[pd.DataFrame]:
+def _load_mapping(path: Optional[Path]) -> Tuple[Optional[pd.DataFrame], dict]:
+    quality = {
+        "mapping_file_rows": 0,
+        "mapping_file_player_ids": 0,
+        "ambiguous_player_ids": 0,
+    }
+
     if path is None:
-        return None
+        return None, quality
 
     mapping = pd.read_csv(path)
+    quality["mapping_file_rows"] = int(len(mapping))
     if "playerID" not in mapping.columns:
         raise ValueError("LAHMAN_PLAYER_MAPPING_PATH must include a 'playerID' column")
 
@@ -30,9 +37,28 @@ def _load_mapping(path: Optional[Path]) -> Optional[pd.DataFrame]:
         )
 
     normalized = mapping[["playerID", mapped_col]].copy()
+    normalized["playerID"] = normalized["playerID"].astype("string")
     normalized = normalized.rename(columns={mapped_col: "mapped_batter"})
-    normalized["mapped_batter"] = normalized["mapped_batter"].astype("string")
-    return normalized.drop_duplicates(subset=["playerID"], keep="first")
+    normalized["mapped_batter"] = normalized["mapped_batter"].apply(_normalize_mapped_batter)
+
+    quality["mapping_file_player_ids"] = int(normalized["playerID"].dropna().nunique())
+    non_empty = normalized.dropna(subset=["playerID", "mapped_batter"])
+    ambiguous = non_empty.groupby("playerID")["mapped_batter"].nunique()
+    quality["ambiguous_player_ids"] = int((ambiguous > 1).sum())
+
+    normalized = normalized.drop_duplicates(subset=["playerID"], keep="first")
+    return normalized, quality
+
+
+def _normalize_mapped_batter(value):
+    if pd.isna(value):
+        return pd.NA
+    text = str(value).strip()
+    if text == "":
+        return pd.NA
+    if text.endswith(".0") and text[:-2].isdigit():
+        return text[:-2]
+    return text
 
 
 def _prepare_lahman_batting(start_season: int, end_season: int) -> pd.DataFrame:
@@ -78,32 +104,55 @@ def build_lahman_player_season_aggregates(
     end_season: int,
     mapping_path: Optional[Path],
 ) -> pd.DataFrame:
+    aggregates, _ = build_lahman_player_season_aggregates_with_quality(
+        start_season=start_season,
+        end_season=end_season,
+        mapping_path=mapping_path,
+    )
+    return aggregates
+
+
+def build_lahman_player_season_aggregates_with_quality(
+    start_season: int,
+    end_season: int,
+    mapping_path: Optional[Path],
+) -> Tuple[pd.DataFrame, dict]:
     batting = _prepare_lahman_batting(start_season, end_season)
     if batting.empty:
-        return pd.DataFrame(
-            columns=[
-                "batter",
-                "player_name",
-                "season",
-                "plate_appearances",
-                "at_bats",
-                "hits",
-                "singles",
-                "doubles",
-                "triples",
-                "home_runs",
-                "walks",
-                "strikeouts",
-                "avg",
-                "obp",
-                "slg",
-                "ops",
-                "source_system",
-            ]
+        return (
+            pd.DataFrame(
+                columns=[
+                    "batter",
+                    "player_name",
+                    "season",
+                    "plate_appearances",
+                    "at_bats",
+                    "hits",
+                    "singles",
+                    "doubles",
+                    "triples",
+                    "home_runs",
+                    "walks",
+                    "strikeouts",
+                    "avg",
+                    "obp",
+                    "slg",
+                    "ops",
+                    "source_system",
+                ]
+            ),
+            {
+                "mapping_file_rows": 0,
+                "mapping_file_player_ids": 0,
+                "ambiguous_player_ids": 0,
+                "player_ids_in_output": 0,
+                "mapped_player_ids_in_output": 0,
+                "unmapped_player_ids_in_output": 0,
+            },
         )
 
     names = _load_player_names()
-    mapping = _load_mapping(mapping_path)
+    mapping, mapping_quality = _load_mapping(mapping_path)
 
     grouped = (
         batting.groupby(["playerID", "season"], dropna=False)
@@ -124,8 +173,10 @@ def build_lahman_player_season_aggregates(
     grouped = grouped.merge(names, on="playerID", how="left")
     grouped["player_name"] = grouped["player_name"].fillna(grouped["playerID"]).astype("string")
 
+    mapped_count = 0
     if mapping is not None:
         grouped = grouped.merge(mapping, on="playerID", how="left")
+        mapped_count = int(grouped.loc[grouped["mapped_batter"].notna(), "playerID"].dropna().nunique())
         grouped["batter"] = grouped["mapped_batter"].fillna("lahman:" + grouped["playerID"].astype("string"))
         grouped = grouped.drop(columns=["mapped_batter"])
     else:
@@ -143,7 +194,12 @@ def build_lahman_player_season_aggregates(
     )
     grouped["source_system"] = "lahman"
 
-    return grouped[
+    player_id_count = int(grouped["playerID"].dropna().nunique())
+    mapping_quality["player_ids_in_output"] = player_id_count
+    mapping_quality["mapped_player_ids_in_output"] = mapped_count
+    mapping_quality["unmapped_player_ids_in_output"] = max(player_id_count - mapped_count, 0)
+
+    output = grouped[
         [
             "batter",
             "player_name",
@@ -164,6 +220,7 @@ def build_lahman_player_season_aggregates(
             "source_system",
         ]
     ]
+    return output, mapping_quality
 
 
 def build_lahman_team_season_aggregates(start_season: int, end_season: int) -> pd.DataFrame:

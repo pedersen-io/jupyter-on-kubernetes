@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Iterable, List, Tuple
 
 HIT_EVENTS = {"single", "double", "triple", "home_run"}
@@ -35,14 +36,40 @@ def add_rate_stats(df, hits_col: str, at_bats_col: str, walks_col: str, singles_
 def fetch_detail_dataframe(config, windows: Iterable[Tuple[int, int, str, str]]) -> pd.DataFrame:
     import pandas as pd
     from pybaseball import statcast
+    from progress import LocalProgressReporter
 
+    windows = list(windows)
+    reporter = LocalProgressReporter(getattr(config, "pretty_local_output", False))
     frames: List[pd.DataFrame] = []
+    total_windows = len(windows)
+    total_rows = 0
+    total_mem_bytes = 0
+    fetch_started = time.time()
 
-    for year, month, start_dt, end_dt in windows:
-        print(f"Fetching Statcast detail for {start_dt} to {end_dt}")
+    reporter.phase("Statcast Detail Fetch", f"{total_windows} window(s)")
+
+    for idx, (year, month, start_dt, end_dt) in enumerate(windows, start=1):
+        window_started = time.time()
+        if reporter.enabled:
+            reporter.progress("windows", idx - 1, total_windows, extra=f"starting {start_dt}..{end_dt}")
+        else:
+            print(f"Fetching Statcast detail for {start_dt} to {end_dt}")
         frame = statcast(start_dt=start_dt, end_dt=end_dt, verbose=False)
 
         if frame is None or frame.empty:
+            if reporter.enabled:
+                elapsed = max(0.001, time.time() - fetch_started)
+                avg = elapsed / idx
+                eta = avg * (total_windows - idx)
+                reporter.progress("windows", idx, total_windows, extra=f"{start_dt}..{end_dt} rows=0 eta={eta:0.1f}s")
+            else:
+                elapsed = max(0.001, time.time() - fetch_started)
+                avg = elapsed / idx
+                eta = avg * (total_windows - idx)
+                print(
+                    f"METRIC statcast_window_complete index={idx} total={total_windows} "
+                    f"start={start_dt} end={end_dt} rows=0 elapsed_s={elapsed:0.1f} eta_s={eta:0.1f}"
+                )
             continue
 
         if config.sample_mode and len(frame) > config.sample_max_rows:
@@ -50,7 +77,43 @@ def fetch_detail_dataframe(config, windows: Iterable[Tuple[int, int, str, str]])
 
         frame["season"] = year
         frame["month"] = f"{month:02d}"
+        frame_mem_bytes = int(frame.memory_usage(index=True, deep=True).sum())
+        total_rows += len(frame)
+        total_mem_bytes += frame_mem_bytes
         frames.append(frame)
+
+        if reporter.enabled:
+            elapsed = max(0.001, time.time() - fetch_started)
+            avg = elapsed / idx
+            eta = avg * (total_windows - idx)
+            took = time.time() - window_started
+            reporter.progress(
+                "windows",
+                idx,
+                total_windows,
+                extra=(
+                    f"{start_dt}..{end_dt} rows={len(frame)} mem={frame_mem_bytes / (1024 ** 2):0.1f}MB "
+                    f"took={took:0.1f}s eta={eta:0.1f}s"
+                ),
+            )
+        else:
+            elapsed = max(0.001, time.time() - fetch_started)
+            avg = elapsed / idx
+            eta = avg * (total_windows - idx)
+            took = time.time() - window_started
+            print(
+                f"METRIC statcast_window_complete index={idx} total={total_windows} "
+                f"start={start_dt} end={end_dt} rows={len(frame)} frame_bytes={frame_mem_bytes} "
+                f"window_s={took:0.1f} elapsed_s={elapsed:0.1f} eta_s={eta:0.1f}"
+            )
+
+    if reporter.enabled:
+        reporter.success(f"Statcast fetch complete: {total_rows} rows in {time.time() - fetch_started:0.1f}s")
+    else:
+        print(
+            f"METRIC statcast_fetch_complete windows={total_windows} rows={total_rows} "
+            f"frame_bytes_total={total_mem_bytes} elapsed_s={time.time() - fetch_started:0.1f}"
+        )
 
     if not frames:
         return pd.DataFrame()

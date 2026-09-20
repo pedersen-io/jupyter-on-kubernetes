@@ -41,6 +41,7 @@ class Config:
     lahman_player_mapping_path: Optional[Path] = None
     lahman_include_overlap: bool = False
     source_overlap_policy: str = "statcast_preferred"
+    pretty_local_output: bool = False
 
 
 def get_config() -> Config:
@@ -62,6 +63,7 @@ def get_config() -> Config:
     lahman_player_mapping_path_raw = os.getenv("LAHMAN_PLAYER_MAPPING_PATH")
     lahman_include_overlap = parse_bool(os.getenv("LAHMAN_INCLUDE_OVERLAP", "false"))
     source_overlap_policy = os.getenv("SOURCE_OVERLAP_POLICY", "statcast_preferred").strip().lower()
+    pretty_local_output = parse_bool(os.getenv("PRETTY_LOCAL_OUTPUT", "false"))
 
     if start_season > end_season:
         raise ValueError("START_SEASON cannot be greater than END_SEASON")
@@ -110,4 +112,5 @@ def get_config() -> Config:
         lahman_player_mapping_path=lahman_player_mapping_path,
         lahman_include_overlap=lahman_include_overlap,
         source_overlap_policy=source_overlap_policy,
+        pretty_local_output=pretty_local_output,
     )
