@@ -58,9 +58,25 @@ make -C mlb-data-pipeline run-job IMAGE_REPO=docker.io/<dockerhub-user>/mlb-data
 Local pipeline test workflow:
 
 ```bash
-make -C mlb-data-pipeline local-install
-make -C mlb-data-pipeline local-run START_SEASON=2024 END_SEASON=2024 OUTPUT_DIR=$(pwd)/mlb-data-pipeline/output
+make mlb-data-pipeline-local-install
+make mlb-data-pipeline-local-run START_SEASON=2024 END_SEASON=2024 OUTPUT_DIR=$(pwd)/mlb-data-pipeline/output
 ```
+
+Top-level MLB pipeline shortcuts:
+
+- `make mlb-data-pipeline-local-install`
+- `make mlb-data-pipeline-local-run ...`
+- `make mlb-data-pipeline-local-run-upload ...`
+- `make mlb-data-pipeline-local-bootstrap ...`
+- `make mlb-data-pipeline-local-bootstrap-upload ...`
+- `make mlb-data-pipeline-test`
+
+These are thin passthrough targets to the module-local Makefile. They exist for convenience only; the module-local `mlb-data-pipeline/Makefile` remains the source of truth for pipeline options and arguments.
+
+Recommended usage:
+
+- Use the explicit Make targets for local-only runs versus upload-enabled runs.
+- Do not add an interactive installer or prompt-driven wrapper unless the workflow becomes genuinely hard to operate non-interactively; today the Make targets and environment variables are simpler and easier to automate.
 
 DigitalOcean Spaces credentials are supplied through a Kubernetes secret named `do-spaces-baseball`.
 
