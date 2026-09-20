@@ -87,6 +87,28 @@ class PipelineTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "requires an existing snapshot"):
                 build_refresh_windows(config, client=None)
 
+    def test_build_refresh_windows_rejects_no_statcast_coverage_without_lahman(self):
+        config = self.build_config()
+        config.start_season = 2010
+        config.end_season = 2014
+        config.statcast_start_season = 2015
+        config.lahman_enabled = False
+
+        with self.assertRaisesRegex(ValueError, "No Statcast windows available"):
+            build_refresh_windows(config, client=None)
+
+    def test_build_refresh_windows_allows_pre_statcast_range_with_lahman_enabled(self):
+        config = self.build_config()
+        config.start_season = 2010
+        config.end_season = 2014
+        config.statcast_start_season = 2015
+        config.lahman_enabled = True
+
+        windows, start_date, end_date = build_refresh_windows(config, client=None)
+        self.assertEqual(windows, [])
+        self.assertEqual(start_date, "2010-01-01")
+        self.assertEqual(end_date, "2014-12-31")
+
     def test_build_refresh_windows_incremental_adds_trailer_and_missing_months(self):
         config = self.build_config()
         latest_pointer = {
@@ -181,6 +203,24 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(int(merged.iloc[0]["hits"]), 10)
 
     @unittest.skipIf(pd is None, "pandas is not installed in this environment")
+    def test_merge_season_aggregates_prefers_lahman_when_configured(self):
+        statcast = pd.DataFrame(
+            [
+                {"batter": "100", "season": 2015, "hits": 10, "source_system": "statcast"},
+            ]
+        )
+        lahman = pd.DataFrame(
+            [
+                {"batter": "100", "season": 2015, "hits": 9, "source_system": "lahman"},
+            ]
+        )
+
+        merged = merge_season_aggregates(statcast, lahman, ["batter", "season"], "lahman_preferred")
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged.iloc[0]["source_system"], "lahman")
+        self.assertEqual(int(merged.iloc[0]["hits"]), 9)
+
+    @unittest.skipIf(pd is None, "pandas is not installed in this environment")
     def test_add_career_source_column_marks_mixed_rows(self):
         career = pd.DataFrame(
             [
@@ -200,6 +240,22 @@ class PipelineTests(unittest.TestCase):
         source_map = {(row["batter"], row["player_name"]): row["source_system"] for _, row in with_source.iterrows()}
         self.assertEqual(source_map[("100", "Player A")], "mixed")
         self.assertEqual(source_map[("200", "Player B")], "lahman")
+
+    @unittest.skipIf(pd is None, "pandas is not installed in this environment")
+    def test_add_career_source_column_defaults_unknown_without_source_column(self):
+        career = pd.DataFrame(
+            [
+                {"batter": "100", "player_name": "Player A", "career_hits": 20},
+            ]
+        )
+        season = pd.DataFrame(
+            [
+                {"batter": "100", "player_name": "Player A", "season": 2015},
+            ]
+        )
+
+        with_source = add_career_source_column(career, season, ["batter", "player_name"])
+        self.assertEqual(with_source.iloc[0]["source_system"], "unknown")
 
 
 if __name__ == "__main__":
