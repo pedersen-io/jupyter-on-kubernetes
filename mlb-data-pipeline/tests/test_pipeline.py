@@ -76,6 +76,42 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(pointer["manifest_path"], "baseball/snapshots/snap-1/manifest.json")
         self.assertEqual(pointer["window_end_date"], "2024-04-30")
 
+    def test_build_manifest_omits_unselected_outputs(self):
+        config = self.build_config()
+        manifest = build_manifest(
+            config,
+            "snap-2",
+            "2024-04-01",
+            "2024-04-30",
+            ["lahman"],
+            None,
+            None,
+            None,
+            12,
+            None,
+            None,
+            None,
+            6,
+        )
+
+        self.assertNotIn("detail", manifest["outputs"])
+        self.assertIn("aggregates", manifest["outputs"])
+        self.assertNotIn("player_season_metrics", manifest["outputs"]["aggregates"])
+        self.assertIn("player_career_metrics", manifest["outputs"]["aggregates"])
+        self.assertIn("manager_career_metrics", manifest["outputs"]["aggregates"])
+
+    def test_build_latest_pointer_can_omit_detail_path(self):
+        config = self.build_config()
+        pointer = build_latest_pointer(
+            config,
+            "snap-1",
+            "baseball/snapshots/snap-1/manifest.json",
+            "2024-04-01",
+            "2024-04-30",
+            detail_included=False,
+        )
+        self.assertIsNone(pointer["detail_path"])
+
     def test_build_refresh_windows_full_first_pass_when_no_latest(self):
         config = self.build_config()
         with patch("pipeline.latest_processed_end_date", return_value=None):

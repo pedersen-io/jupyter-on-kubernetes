@@ -44,6 +44,13 @@ class Config:
     lahman_include_overlap: bool = False
     source_overlap_policy: str = "statcast_preferred"
     pretty_local_output: bool = False
+    include_detail_dataset: bool = True
+    include_aggregate_datasets: bool = True
+    include_player_aggregates: bool = True
+    include_team_aggregates: bool = True
+    include_manager_aggregates: bool = True
+    include_season_aggregates: bool = True
+    include_career_aggregates: bool = True
 
 
 def get_config() -> Config:
@@ -68,6 +75,13 @@ def get_config() -> Config:
     lahman_include_overlap = parse_bool(os.getenv("LAHMAN_INCLUDE_OVERLAP", "false"))
     source_overlap_policy = os.getenv("SOURCE_OVERLAP_POLICY", "statcast_preferred").strip().lower()
     pretty_local_output = parse_bool(os.getenv("PRETTY_LOCAL_OUTPUT", "false"))
+    include_detail_dataset = parse_bool(os.getenv("INCLUDE_DETAIL_DATASET", "true"))
+    include_aggregate_datasets = parse_bool(os.getenv("INCLUDE_AGGREGATE_DATASETS", "true"))
+    include_player_aggregates = parse_bool(os.getenv("INCLUDE_PLAYER_AGGREGATES", "true"))
+    include_team_aggregates = parse_bool(os.getenv("INCLUDE_TEAM_AGGREGATES", "true"))
+    include_manager_aggregates = parse_bool(os.getenv("INCLUDE_MANAGER_AGGREGATES", "true"))
+    include_season_aggregates = parse_bool(os.getenv("INCLUDE_SEASON_AGGREGATES", "true"))
+    include_career_aggregates = parse_bool(os.getenv("INCLUDE_CAREER_AGGREGATES", "true"))
 
     if start_season > end_season:
         raise ValueError("START_SEASON cannot be greater than END_SEASON")
@@ -88,6 +102,19 @@ def get_config() -> Config:
         raise ValueError("LAHMAN_START_SEASON cannot be greater than LAHMAN_END_SEASON")
     if source_overlap_policy not in {"statcast_preferred", "lahman_preferred"}:
         raise ValueError("SOURCE_OVERLAP_POLICY must be one of: statcast_preferred, lahman_preferred")
+    if not include_detail_dataset and not include_aggregate_datasets:
+        raise ValueError("At least one of INCLUDE_DETAIL_DATASET or INCLUDE_AGGREGATE_DATASETS must be true")
+    if include_aggregate_datasets and not (
+        include_player_aggregates or include_team_aggregates or include_manager_aggregates
+    ):
+        raise ValueError(
+            "INCLUDE_AGGREGATE_DATASETS=true requires at least one of INCLUDE_PLAYER_AGGREGATES, "
+            "INCLUDE_TEAM_AGGREGATES, or INCLUDE_MANAGER_AGGREGATES"
+        )
+    if include_aggregate_datasets and not (include_season_aggregates or include_career_aggregates):
+        raise ValueError(
+            "INCLUDE_AGGREGATE_DATASETS=true requires INCLUDE_SEASON_AGGREGATES or INCLUDE_CAREER_AGGREGATES"
+        )
 
     lahman_player_mapping_path = Path(lahman_player_mapping_path_raw) if lahman_player_mapping_path_raw else None
 
@@ -119,4 +146,11 @@ def get_config() -> Config:
         lahman_include_overlap=lahman_include_overlap,
         source_overlap_policy=source_overlap_policy,
         pretty_local_output=pretty_local_output,
+        include_detail_dataset=include_detail_dataset,
+        include_aggregate_datasets=include_aggregate_datasets,
+        include_player_aggregates=include_player_aggregates,
+        include_team_aggregates=include_team_aggregates,
+        include_manager_aggregates=include_manager_aggregates,
+        include_season_aggregates=include_season_aggregates,
+        include_career_aggregates=include_career_aggregates,
     )

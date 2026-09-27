@@ -32,6 +32,13 @@ class ConfigTests(unittest.TestCase):
         self.assertFalse(config.upload_enabled)
         self.assertTrue(config.incremental_mode)
         self.assertEqual(config.source_overlap_policy, "statcast_preferred")
+        self.assertTrue(config.include_detail_dataset)
+        self.assertTrue(config.include_aggregate_datasets)
+        self.assertTrue(config.include_player_aggregates)
+        self.assertTrue(config.include_team_aggregates)
+        self.assertTrue(config.include_manager_aggregates)
+        self.assertTrue(config.include_season_aggregates)
+        self.assertTrue(config.include_career_aggregates)
 
     def test_get_config_normalizes_overlap_policy_and_mapping_path(self):
         with patch.dict(
@@ -63,6 +70,44 @@ class ConfigTests(unittest.TestCase):
     def test_get_config_requires_sample_dates_as_pair(self):
         with patch.dict(os.environ, {"SAMPLE_START_DATE": "2024-04-01"}, clear=True):
             with self.assertRaisesRegex(ValueError, "must be set together"):
+                get_config()
+
+    def test_get_config_rejects_when_all_outputs_disabled(self):
+        with patch.dict(
+            os.environ,
+            {
+                "INCLUDE_DETAIL_DATASET": "false",
+                "INCLUDE_AGGREGATE_DATASETS": "false",
+            },
+            clear=True,
+        ):
+            with self.assertRaisesRegex(ValueError, "At least one of"):
+                get_config()
+
+    def test_get_config_rejects_invalid_aggregate_switch_combinations(self):
+        with patch.dict(
+            os.environ,
+            {
+                "INCLUDE_AGGREGATE_DATASETS": "true",
+                "INCLUDE_PLAYER_AGGREGATES": "false",
+                "INCLUDE_TEAM_AGGREGATES": "false",
+                "INCLUDE_MANAGER_AGGREGATES": "false",
+            },
+            clear=True,
+        ):
+            with self.assertRaisesRegex(ValueError, "requires at least one"):
+                get_config()
+
+        with patch.dict(
+            os.environ,
+            {
+                "INCLUDE_AGGREGATE_DATASETS": "true",
+                "INCLUDE_SEASON_AGGREGATES": "false",
+                "INCLUDE_CAREER_AGGREGATES": "false",
+            },
+            clear=True,
+        ):
+            with self.assertRaisesRegex(ValueError, "requires INCLUDE_SEASON_AGGREGATES"):
                 get_config()
 
         with patch.dict(os.environ, {"SAMPLE_END_DATE": "2024-04-30"}, clear=True):

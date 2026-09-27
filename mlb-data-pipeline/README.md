@@ -70,6 +70,14 @@ make -C mlb-data-pipeline apply-cronjob IMAGE_REPO=docker.io/<dockerhub-user>/ml
 - `local-run-sample`: local sample/debug run with upload forced off
 - `local-run-docker`: run the container locally with a bind-mounted output directory and upload forced off
 - `local-run-sample-docker`: sampled Docker run with a bind-mounted output directory and upload forced off
+- `local-run-detail-only`: write only detail dataset output (no aggregate parquet files)
+- `local-run-aggregates-only`: write only aggregate parquet outputs (no detail dataset files)
+- `local-run-player-season`: write only player season aggregate output
+- `local-run-team-career`: write only team career aggregate output
+- `local-run-manager-season`: write only manager season aggregate output
+- `local-run-manager-career`: write only manager career aggregate output
+
+Manager-only targets set `LAHMAN_ENABLED=true` automatically.
 - `test`: run the Python test suite
 - `run-bootstrap-job`: render and apply the one-off Kubernetes bootstrap job
 - `run-job`: alias for the same rendered one-off bootstrap job
@@ -264,6 +272,13 @@ INCREMENTAL_MODE=true TRAILER_MONTHS=1
 - `LAHMAN_INCLUDE_OVERLAP` default `false` (when false, Lahman contributes pre-Statcast seasons only)
 - `SOURCE_OVERLAP_POLICY` default `statcast_preferred` (`statcast_preferred` or `lahman_preferred`)
 - `PRETTY_LOCAL_OUTPUT` default `false` (Make `local-run` targets set it to `true`; k8s manifests remain unchanged)
+- `INCLUDE_DETAIL_DATASET` default `true` (when `false`, the detail parquet dataset is not written)
+- `INCLUDE_AGGREGATE_DATASETS` default `true` (when `false`, no aggregate parquet files are written)
+- `INCLUDE_PLAYER_AGGREGATES` default `true`
+- `INCLUDE_TEAM_AGGREGATES` default `true`
+- `INCLUDE_MANAGER_AGGREGATES` default `true`
+- `INCLUDE_SEASON_AGGREGATES` default `true`
+- `INCLUDE_CAREER_AGGREGATES` default `true`
 - `SAMPLE_MODE` default `false`
 - `SAMPLE_START_DATE` optional `YYYY-MM-DD` (must be set with `SAMPLE_END_DATE`)
 - `SAMPLE_END_DATE` optional `YYYY-MM-DD` (must be set with `SAMPLE_START_DATE`)

@@ -791,18 +791,24 @@ def build_team_career_aggregates(team_season_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def write_aggregate_tables(
-    player_season_df: pd.DataFrame,
-    player_career_df: pd.DataFrame,
-    team_season_df: pd.DataFrame,
-    team_career_df: pd.DataFrame,
-    manager_season_df: pd.DataFrame,
-    manager_career_df: pd.DataFrame,
+    player_season_df: pd.DataFrame | None,
+    player_career_df: pd.DataFrame | None,
+    team_season_df: pd.DataFrame | None,
+    team_career_df: pd.DataFrame | None,
+    manager_season_df: pd.DataFrame | None,
+    manager_career_df: pd.DataFrame | None,
     aggregates_dir,
 ) -> None:
     aggregates_dir.mkdir(parents=True, exist_ok=True)
-    player_season_df.to_parquet(aggregates_dir / "player_season_metrics.parquet", index=False)
-    player_career_df.to_parquet(aggregates_dir / "player_career_metrics.parquet", index=False)
-    team_season_df.to_parquet(aggregates_dir / "team_season_metrics.parquet", index=False)
-    team_career_df.to_parquet(aggregates_dir / "team_career_metrics.parquet", index=False)
-    manager_season_df.to_parquet(aggregates_dir / "manager_season_metrics.parquet", index=False)
-    manager_career_df.to_parquet(aggregates_dir / "manager_career_metrics.parquet", index=False)
+    if player_season_df is not None:
+        player_season_df.to_parquet(aggregates_dir / "player_season_metrics.parquet", index=False)
+    if player_career_df is not None:
+        player_career_df.to_parquet(aggregates_dir / "player_career_metrics.parquet", index=False)
+    if team_season_df is not None:
+        team_season_df.to_parquet(aggregates_dir / "team_season_metrics.parquet", index=False)
+    if team_career_df is not None:
+        team_career_df.to_parquet(aggregates_dir / "team_career_metrics.parquet", index=False)
+    if manager_season_df is not None:
+        manager_season_df.to_parquet(aggregates_dir / "manager_season_metrics.parquet", index=False)
+    if manager_career_df is not None:
+        manager_career_df.to_parquet(aggregates_dir / "manager_career_metrics.parquet", index=False)
