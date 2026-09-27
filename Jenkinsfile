@@ -1,8 +1,10 @@
 pipeline {
-  agent any
+  agent {
+    label 'build-jenkins-base || build-base'
+  }
 
   options {
-    timestamps()
+    wrap([$class: 'TimestamperBuildWrapper'])
     disableConcurrentBuilds()
   }
 
