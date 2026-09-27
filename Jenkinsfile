@@ -4,7 +4,6 @@ pipeline {
   }
 
   options {
-    wrap([$class: 'TimestamperBuildWrapper'])
     disableConcurrentBuilds()
   }
 
