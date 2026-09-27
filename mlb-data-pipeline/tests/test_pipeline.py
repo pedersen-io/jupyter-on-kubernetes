@@ -53,6 +53,8 @@ class PipelineTests(unittest.TestCase):
             1,
             3,
             2,
+            4,
+            2,
         )
         self.assertEqual(manifest["source"]["window_start_date"], "2024-04-01")
         self.assertEqual(manifest["source"]["window_end_date"], "2024-04-30")
@@ -61,8 +63,12 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(manifest["outputs"]["detail"]["rows"], 10)
         self.assertIn("team_season_metrics", manifest["outputs"]["aggregates"])
         self.assertIn("team_career_metrics", manifest["outputs"]["aggregates"])
+        self.assertIn("manager_season_metrics", manifest["outputs"]["aggregates"])
+        self.assertIn("manager_career_metrics", manifest["outputs"]["aggregates"])
         self.assertEqual(manifest["outputs"]["aggregates"]["team_season_rows"], 3)
         self.assertEqual(manifest["outputs"]["aggregates"]["team_career_rows"], 2)
+        self.assertEqual(manifest["outputs"]["aggregates"]["manager_season_rows"], 4)
+        self.assertEqual(manifest["outputs"]["aggregates"]["manager_career_rows"], 2)
 
     def test_build_latest_pointer_includes_manifest_path(self):
         config = self.build_config()

@@ -35,6 +35,53 @@ def add_rate_stats(df, hits_col: str, at_bats_col: str, walks_col: str, singles_
     return df
 
 
+def add_advanced_batting_stats(
+    df,
+    plate_appearances_col: str,
+    at_bats_col: str,
+    hits_col: str,
+    walks_col: str,
+    strikeouts_col: str,
+    singles_col: str,
+    doubles_col: str,
+    triples_col: str,
+    home_runs_col: str,
+    sac_flies_col: str,
+    avg_col: str,
+    slg_col: str,
+    prefix: str = "",
+):
+    pa = df[plate_appearances_col].astype(float)
+    at_bats = df[at_bats_col].astype(float)
+    hits = df[hits_col].astype(float)
+    walks = df[walks_col].astype(float)
+    strikeouts = df[strikeouts_col].astype(float)
+    singles = df[singles_col].astype(float)
+    doubles = df[doubles_col].astype(float)
+    triples = df[triples_col].astype(float)
+    home_runs = df[home_runs_col].astype(float)
+    sac_flies = df[sac_flies_col].astype(float)
+
+    total_bases = (singles * 1) + (doubles * 2) + (triples * 3) + (home_runs * 4)
+    xbh = doubles + triples + home_runs
+
+    df[f"{prefix}bb_rate"] = (walks / pa.where(pa > 0)).fillna(0.0)
+    df[f"{prefix}k_rate"] = (strikeouts / pa.where(pa > 0)).fillna(0.0)
+    df[f"{prefix}k_bb_ratio"] = (strikeouts / walks.where(walks > 0)).fillna(0.0)
+    df[f"{prefix}iso"] = (df[slg_col].astype(float) - df[avg_col].astype(float)).fillna(0.0)
+    df[f"{prefix}xbh_rate"] = (xbh / hits.where(hits > 0)).fillna(0.0)
+    df[f"{prefix}hr_rate"] = (home_runs / pa.where(pa > 0)).fillna(0.0)
+    df[f"{prefix}bb_minus_k_rate"] = df[f"{prefix}bb_rate"] - df[f"{prefix}k_rate"]
+
+    babip_den = at_bats - strikeouts - home_runs + sac_flies
+    df[f"{prefix}babip"] = ((hits - home_runs) / babip_den.where(babip_den > 0)).fillna(0.0)
+    df[f"{prefix}contact_rate"] = (1.0 - df[f"{prefix}k_rate"]).clip(lower=0.0, upper=1.0)
+
+    rc_den = at_bats + walks
+    df[f"{prefix}runs_created"] = (((hits + walks) * total_bases) / rc_den.where(rc_den > 0)).fillna(0.0)
+    return df
+
+
 def _event_equals(events, value: str):
     return events.eq(value).fillna(False)
 
@@ -292,10 +339,21 @@ def build_player_season_aggregates(detail_df: pd.DataFrame, source_system: str =
                 "home_runs",
                 "walks",
                 "strikeouts",
+                "sac_flies",
                 "avg",
                 "obp",
                 "slg",
                 "ops",
+                "bb_rate",
+                "k_rate",
+                "k_bb_ratio",
+                "iso",
+                "xbh_rate",
+                "hr_rate",
+                "bb_minus_k_rate",
+                "babip",
+                "contact_rate",
+                "runs_created",
                 "source_system",
             ]
         )
@@ -317,6 +375,7 @@ def build_player_season_aggregates(detail_df: pd.DataFrame, source_system: str =
     agg_source["is_hr"] = _event_equals(agg_source["events"], "home_run").astype(int)
     agg_source["is_walk"] = _event_in(agg_source["events"], {"walk", "intent_walk"}).astype(int)
     agg_source["is_strikeout"] = _event_in(agg_source["events"], {"strikeout", "strikeout_double_play"}).astype(int)
+    agg_source["is_sac_fly"] = _event_equals(agg_source["events"], "sac_fly").astype(int)
     agg_source["is_ab"] = (agg_source["events"].notna() & ~_event_in(agg_source["events"], AB_EXCLUDED_EVENTS)).astype(int)
 
     grouped = (
@@ -331,6 +390,7 @@ def build_player_season_aggregates(detail_df: pd.DataFrame, source_system: str =
             home_runs=("is_hr", "sum"),
             walks=("is_walk", "sum"),
             strikeouts=("is_strikeout", "sum"),
+            sac_flies=("is_sac_fly", "sum"),
         )
         .reset_index()
     )
@@ -353,6 +413,21 @@ def build_player_season_aggregates(detail_df: pd.DataFrame, source_system: str =
         triples_col="triples",
         home_runs_col="home_runs",
     )
+    grouped = add_advanced_batting_stats(
+        grouped,
+        plate_appearances_col="plate_appearances",
+        at_bats_col="at_bats",
+        hits_col="hits",
+        walks_col="walks",
+        strikeouts_col="strikeouts",
+        singles_col="singles",
+        doubles_col="doubles",
+        triples_col="triples",
+        home_runs_col="home_runs",
+        sac_flies_col="sac_flies",
+        avg_col="avg",
+        slg_col="slg",
+    )
     grouped["source_system"] = source_system
     return grouped[
         [
@@ -368,10 +443,21 @@ def build_player_season_aggregates(detail_df: pd.DataFrame, source_system: str =
             "home_runs",
             "walks",
             "strikeouts",
+            "sac_flies",
             "avg",
             "obp",
             "slg",
             "ops",
+            "bb_rate",
+            "k_rate",
+            "k_bb_ratio",
+            "iso",
+            "xbh_rate",
+            "hr_rate",
+            "bb_minus_k_rate",
+            "babip",
+            "contact_rate",
+            "runs_created",
             "source_system",
         ]
     ]
@@ -395,10 +481,21 @@ def build_player_career_aggregates(player_season_df: pd.DataFrame) -> pd.DataFra
                 "career_home_runs",
                 "career_walks",
                 "career_strikeouts",
+                "career_sac_flies",
                 "career_avg",
                 "career_obp",
                 "career_slg",
                 "career_ops",
+                "career_bb_rate",
+                "career_k_rate",
+                "career_k_bb_ratio",
+                "career_iso",
+                "career_xbh_rate",
+                "career_hr_rate",
+                "career_bb_minus_k_rate",
+                "career_babip",
+                "career_contact_rate",
+                "career_runs_created",
                 "career_hits_rank",
                 "source_system",
             ]
@@ -417,6 +514,7 @@ def build_player_career_aggregates(player_season_df: pd.DataFrame) -> pd.DataFra
             career_home_runs=("home_runs", "sum"),
             career_walks=("walks", "sum"),
             career_strikeouts=("strikeouts", "sum"),
+            career_sac_flies=("sac_flies", "sum"),
         )
         .reset_index()
     )
@@ -438,6 +536,22 @@ def build_player_career_aggregates(player_season_df: pd.DataFrame) -> pd.DataFra
             "slg": "career_slg",
             "ops": "career_ops",
         }
+    )
+    career = add_advanced_batting_stats(
+        career,
+        plate_appearances_col="career_plate_appearances",
+        at_bats_col="career_at_bats",
+        hits_col="career_hits",
+        walks_col="career_walks",
+        strikeouts_col="career_strikeouts",
+        singles_col="career_singles",
+        doubles_col="career_doubles",
+        triples_col="career_triples",
+        home_runs_col="career_home_runs",
+        sac_flies_col="career_sac_flies",
+        avg_col="career_avg",
+        slg_col="career_slg",
+        prefix="career_",
     )
 
     career["career_hits_rank"] = career["career_hits"].rank(method="dense", ascending=False).astype(int)
@@ -461,10 +575,21 @@ def build_team_season_aggregates(detail_df: pd.DataFrame, source_system: str = "
                 "home_runs",
                 "walks",
                 "strikeouts",
+                "sac_flies",
                 "avg",
                 "obp",
                 "slg",
                 "ops",
+                "bb_rate",
+                "k_rate",
+                "k_bb_ratio",
+                "iso",
+                "xbh_rate",
+                "hr_rate",
+                "bb_minus_k_rate",
+                "babip",
+                "contact_rate",
+                "runs_created",
                 "source_system",
             ]
         )
@@ -492,6 +617,7 @@ def build_team_season_aggregates(detail_df: pd.DataFrame, source_system: str = "
     agg_source["is_hr"] = _event_equals(agg_source["events"], "home_run").astype(int)
     agg_source["is_walk"] = _event_in(agg_source["events"], {"walk", "intent_walk"}).astype(int)
     agg_source["is_strikeout"] = _event_in(agg_source["events"], {"strikeout", "strikeout_double_play"}).astype(int)
+    agg_source["is_sac_fly"] = _event_equals(agg_source["events"], "sac_fly").astype(int)
     agg_source["is_ab"] = (agg_source["events"].notna() & ~_event_in(agg_source["events"], AB_EXCLUDED_EVENTS)).astype(int)
 
     grouped = (
@@ -506,6 +632,7 @@ def build_team_season_aggregates(detail_df: pd.DataFrame, source_system: str = "
             home_runs=("is_hr", "sum"),
             walks=("is_walk", "sum"),
             strikeouts=("is_strikeout", "sum"),
+            sac_flies=("is_sac_fly", "sum"),
         )
         .reset_index()
     )
@@ -518,6 +645,21 @@ def build_team_season_aggregates(detail_df: pd.DataFrame, source_system: str = "
         doubles_col="doubles",
         triples_col="triples",
         home_runs_col="home_runs",
+    )
+    grouped = add_advanced_batting_stats(
+        grouped,
+        plate_appearances_col="plate_appearances",
+        at_bats_col="at_bats",
+        hits_col="hits",
+        walks_col="walks",
+        strikeouts_col="strikeouts",
+        singles_col="singles",
+        doubles_col="doubles",
+        triples_col="triples",
+        home_runs_col="home_runs",
+        sac_flies_col="sac_flies",
+        avg_col="avg",
+        slg_col="slg",
     )
     grouped["source_system"] = source_system
 
@@ -534,10 +676,21 @@ def build_team_season_aggregates(detail_df: pd.DataFrame, source_system: str = "
             "home_runs",
             "walks",
             "strikeouts",
+            "sac_flies",
             "avg",
             "obp",
             "slg",
             "ops",
+            "bb_rate",
+            "k_rate",
+            "k_bb_ratio",
+            "iso",
+            "xbh_rate",
+            "hr_rate",
+            "bb_minus_k_rate",
+            "babip",
+            "contact_rate",
+            "runs_created",
             "source_system",
         ]
     ]
@@ -560,10 +713,21 @@ def build_team_career_aggregates(team_season_df: pd.DataFrame) -> pd.DataFrame:
                 "career_home_runs",
                 "career_walks",
                 "career_strikeouts",
+                "career_sac_flies",
                 "career_avg",
                 "career_obp",
                 "career_slg",
                 "career_ops",
+                "career_bb_rate",
+                "career_k_rate",
+                "career_k_bb_ratio",
+                "career_iso",
+                "career_xbh_rate",
+                "career_hr_rate",
+                "career_bb_minus_k_rate",
+                "career_babip",
+                "career_contact_rate",
+                "career_runs_created",
                 "career_hits_rank",
                 "source_system",
             ]
@@ -582,6 +746,7 @@ def build_team_career_aggregates(team_season_df: pd.DataFrame) -> pd.DataFrame:
             career_home_runs=("home_runs", "sum"),
             career_walks=("walks", "sum"),
             career_strikeouts=("strikeouts", "sum"),
+            career_sac_flies=("sac_flies", "sum"),
         )
         .reset_index()
     )
@@ -604,6 +769,22 @@ def build_team_career_aggregates(team_season_df: pd.DataFrame) -> pd.DataFrame:
             "ops": "career_ops",
         }
     )
+    career = add_advanced_batting_stats(
+        career,
+        plate_appearances_col="career_plate_appearances",
+        at_bats_col="career_at_bats",
+        hits_col="career_hits",
+        walks_col="career_walks",
+        strikeouts_col="career_strikeouts",
+        singles_col="career_singles",
+        doubles_col="career_doubles",
+        triples_col="career_triples",
+        home_runs_col="career_home_runs",
+        sac_flies_col="career_sac_flies",
+        avg_col="career_avg",
+        slg_col="career_slg",
+        prefix="career_",
+    )
 
     career["career_hits_rank"] = career["career_hits"].rank(method="dense", ascending=False).astype(int)
     return career.sort_values(["career_hits", "career_home_runs"], ascending=[False, False])
@@ -614,6 +795,8 @@ def write_aggregate_tables(
     player_career_df: pd.DataFrame,
     team_season_df: pd.DataFrame,
     team_career_df: pd.DataFrame,
+    manager_season_df: pd.DataFrame,
+    manager_career_df: pd.DataFrame,
     aggregates_dir,
 ) -> None:
     aggregates_dir.mkdir(parents=True, exist_ok=True)
@@ -621,3 +804,5 @@ def write_aggregate_tables(
     player_career_df.to_parquet(aggregates_dir / "player_career_metrics.parquet", index=False)
     team_season_df.to_parquet(aggregates_dir / "team_season_metrics.parquet", index=False)
     team_career_df.to_parquet(aggregates_dir / "team_career_metrics.parquet", index=False)
+    manager_season_df.to_parquet(aggregates_dir / "manager_season_metrics.parquet", index=False)
+    manager_career_df.to_parquet(aggregates_dir / "manager_career_metrics.parquet", index=False)

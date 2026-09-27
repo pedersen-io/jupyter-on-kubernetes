@@ -116,6 +116,16 @@ class TransformTests(unittest.TestCase):
         self.assertAlmostEqual(float(nyy["obp"]), 1.0, places=6)
         self.assertAlmostEqual(float(nyy["slg"]), 7.0 / 3.0, places=6)
         self.assertAlmostEqual(float(nyy["ops"]), 1.0 + (7.0 / 3.0), places=6)
+        self.assertAlmostEqual(float(nyy["bb_rate"]), 1.0 / 4.0, places=6)
+        self.assertAlmostEqual(float(nyy["k_rate"]), 0.0, places=6)
+        self.assertAlmostEqual(float(nyy["k_bb_ratio"]), 0.0, places=6)
+        self.assertAlmostEqual(float(nyy["iso"]), (7.0 / 3.0) - 1.0, places=6)
+        self.assertAlmostEqual(float(nyy["xbh_rate"]), 2.0 / 3.0, places=6)
+        self.assertAlmostEqual(float(nyy["hr_rate"]), 1.0 / 4.0, places=6)
+        self.assertAlmostEqual(float(nyy["bb_minus_k_rate"]), 1.0 / 4.0, places=6)
+        self.assertAlmostEqual(float(nyy["babip"]), 1.0, places=6)
+        self.assertAlmostEqual(float(nyy["contact_rate"]), 1.0, places=6)
+        self.assertAlmostEqual(float(nyy["runs_created"]), ((3.0 + 1.0) * 7.0) / (3.0 + 1.0), places=6)
 
     def test_player_season_aggregates_ignore_missing_events(self):
         detail_df = pd.DataFrame(

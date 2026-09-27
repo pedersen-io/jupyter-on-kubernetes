@@ -10,7 +10,12 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - environment dependent
     pd = None
 
-from lahman import build_lahman_player_season_aggregates_with_quality, build_lahman_team_season_aggregates
+from lahman import (
+    build_lahman_manager_career_aggregates,
+    build_lahman_manager_season_aggregates,
+    build_lahman_player_season_aggregates_with_quality,
+    build_lahman_team_season_aggregates,
+)
 
 
 @unittest.skipIf(pd is None, "pandas is not installed in this environment")
@@ -126,6 +131,41 @@ class LahmanTests(unittest.TestCase):
         self.assertEqual(row["team"], "BOS")
         self.assertEqual(int(row["hits"]), 6)
         self.assertEqual(row["source_system"], "lahman")
+
+    def test_manager_aggregates_include_win_rate_and_career_rollup(self):
+        managers = pd.DataFrame(
+            [
+                {"playerID": "mgr_a", "yearID": 2014, "teamID": "BOS", "G": 100, "W": 60, "L": 40, "season": 2014},
+                {"playerID": "mgr_a", "yearID": 2014, "teamID": "NYY", "G": 62, "W": 30, "L": 32, "season": 2014},
+                {"playerID": "mgr_b", "yearID": 2014, "teamID": "LAD", "G": 162, "W": 81, "L": 81, "season": 2014},
+            ]
+        )
+        people = pd.DataFrame(
+            [
+                {"playerID": "mgr_a", "player_name": "Manager A"},
+                {"playerID": "mgr_b", "player_name": "Manager B"},
+            ]
+        )
+
+        with patch("lahman._prepare_lahman_managers", return_value=managers), patch("lahman._load_player_names", return_value=people):
+            season = build_lahman_manager_season_aggregates(2014, 2014)
+
+        self.assertEqual(len(season), 2)
+        mgr_a = season[season["manager_id"] == "mgr_a"].iloc[0]
+        self.assertEqual(int(mgr_a["teams_managed"]), 2)
+        self.assertEqual(int(mgr_a["games"]), 162)
+        self.assertEqual(int(mgr_a["wins"]), 90)
+        self.assertEqual(int(mgr_a["losses"]), 72)
+        self.assertAlmostEqual(float(mgr_a["win_pct"]), 90.0 / 162.0, places=6)
+
+        career = build_lahman_manager_career_aggregates(season)
+        self.assertEqual(len(career), 2)
+        mgr_a_career = career[career["manager_id"] == "mgr_a"].iloc[0]
+        self.assertEqual(int(mgr_a_career["career_games"]), 162)
+        self.assertEqual(int(mgr_a_career["career_wins"]), 90)
+        self.assertEqual(int(mgr_a_career["career_losses"]), 72)
+        self.assertEqual(int(mgr_a_career["career_games_above_500"]), 18)
+        self.assertAlmostEqual(float(mgr_a_career["career_win_pct"]), 90.0 / 162.0, places=6)
 
 
 if __name__ == "__main__":

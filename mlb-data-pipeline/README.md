@@ -20,10 +20,14 @@ Jupyter users can start from the shared notebook template copied into their work
 - Aggregate dataset: `player_career_metrics.parquet`
 - Aggregate dataset: `team_season_metrics.parquet`
 - Aggregate dataset: `team_career_metrics.parquet`
+- Aggregate dataset: `manager_season_metrics.parquet`
+- Aggregate dataset: `manager_career_metrics.parquet`
 - Snapshot manifest: `manifest.json`
 - Latest pointer: `latest.json`
 
 Player and team aggregate outputs include counting stats plus query-friendly rate stats: `avg`, `obp`, `slg`, and `ops` (with career-prefixed variants in career tables).
+
+Manager aggregate outputs are sourced from Lahman managerial records and include season/career wins, losses, winning percentage, games above .500, and ranking by career wins.
 
 ## Quick Start
 

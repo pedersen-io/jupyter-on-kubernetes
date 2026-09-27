@@ -8,7 +8,12 @@ from typing import List, Optional, Tuple
 import pandas as pd
 
 from config import Config, get_config
-from lahman import build_lahman_player_season_aggregates_with_quality, build_lahman_team_season_aggregates
+from lahman import (
+    build_lahman_manager_career_aggregates,
+    build_lahman_manager_season_aggregates,
+    build_lahman_player_season_aggregates_with_quality,
+    build_lahman_team_season_aggregates,
+)
 from progress import LocalProgressReporter
 from storage import (
     create_s3_client,
@@ -148,6 +153,8 @@ def build_manifest(
     player_career_rows: int,
     team_season_rows: int,
     team_career_rows: int,
+    manager_season_rows: int,
+    manager_career_rows: int,
 ) -> dict:
     return {
         "snapshot_id": snapshot_id,
@@ -184,10 +191,14 @@ def build_manifest(
                 "player_career_metrics": f"{config.dataset_prefix}/snapshots/{snapshot_id}/aggregates/player_career_metrics.parquet",
                 "team_season_metrics": f"{config.dataset_prefix}/snapshots/{snapshot_id}/aggregates/team_season_metrics.parquet",
                 "team_career_metrics": f"{config.dataset_prefix}/snapshots/{snapshot_id}/aggregates/team_career_metrics.parquet",
+                "manager_season_metrics": f"{config.dataset_prefix}/snapshots/{snapshot_id}/aggregates/manager_season_metrics.parquet",
+                "manager_career_metrics": f"{config.dataset_prefix}/snapshots/{snapshot_id}/aggregates/manager_career_metrics.parquet",
                 "player_season_rows": player_season_rows,
                 "player_career_rows": player_career_rows,
                 "team_season_rows": team_season_rows,
                 "team_career_rows": team_career_rows,
+                "manager_season_rows": manager_season_rows,
+                "manager_career_rows": manager_career_rows,
             },
         },
     }
@@ -432,6 +443,35 @@ def main() -> None:
     if not detail_df.empty:
         log_metric("statcast_aggregate_seed_rows", rows=len(detail_df))
     lahman_mapping_quality = None
+    manager_season_df = pd.DataFrame(
+        columns=[
+            "manager_id",
+            "manager_name",
+            "season",
+            "teams_managed",
+            "games",
+            "wins",
+            "losses",
+            "games_above_500",
+            "win_pct",
+            "source_system",
+        ]
+    )
+    manager_career_df = pd.DataFrame(
+        columns=[
+            "manager_id",
+            "manager_name",
+            "seasons",
+            "career_teams_managed",
+            "career_games",
+            "career_wins",
+            "career_losses",
+            "career_games_above_500",
+            "career_win_pct",
+            "career_wins_rank",
+            "source_system",
+        ]
+    )
 
     if config.lahman_enabled:
         lahman_start = max(config.start_season, config.lahman_start_season)
@@ -448,6 +488,8 @@ def main() -> None:
                 mapping_path=config.lahman_player_mapping_path,
             )
             lahman_team_season = build_lahman_team_season_aggregates(lahman_start, lahman_end)
+            manager_season_df = build_lahman_manager_season_aggregates(lahman_start, lahman_end)
+            manager_career_df = build_lahman_manager_career_aggregates(manager_season_df)
 
             player_season_df = merge_season_aggregates(
                 player_season_df,
@@ -462,17 +504,18 @@ def main() -> None:
                 overlap_policy=config.source_overlap_policy,
             )
 
-            if not lahman_player_season.empty or not lahman_team_season.empty:
+            if not lahman_player_season.empty or not lahman_team_season.empty or not manager_season_df.empty:
                 source_datasets.append("lahman")
                 log_metric(
                     "lahman_rows_merged",
                     player_rows=len(lahman_player_season),
                     team_rows=len(lahman_team_season),
+                    manager_rows=len(manager_season_df),
                     start_season=lahman_start,
                     end_season=lahman_end,
                 )
                 reporter.success(
-                    f"lahman rows merged: player={len(lahman_player_season)} team={len(lahman_team_season)}"
+                    f"lahman rows merged: player={len(lahman_player_season)} team={len(lahman_team_season)} manager={len(manager_season_df)}"
                 )
 
             if lahman_mapping_quality is not None:
@@ -495,12 +538,29 @@ def main() -> None:
         for source_name, count in player_season_df["source_system"].value_counts().items():
             log_metric("player_season_source_rows", source=source_name, rows=int(count), total=int(len(player_season_df)))
 
-    write_aggregate_tables(player_season_df, player_career_df, team_season_df, team_career_df, aggregates_dir)
+    write_aggregate_tables(
+        player_season_df,
+        player_career_df,
+        team_season_df,
+        team_career_df,
+        manager_season_df,
+        manager_career_df,
+        aggregates_dir,
+    )
     player_season_bytes = dataframe_bytes(player_season_df)
     player_career_bytes = dataframe_bytes(player_career_df)
     team_season_bytes = dataframe_bytes(team_season_df)
     team_career_bytes = dataframe_bytes(team_career_df)
-    aggregate_df_bytes = player_season_bytes + player_career_bytes + team_season_bytes + team_career_bytes
+    manager_season_bytes = dataframe_bytes(manager_season_df)
+    manager_career_bytes = dataframe_bytes(manager_career_df)
+    aggregate_df_bytes = (
+        player_season_bytes
+        + player_career_bytes
+        + team_season_bytes
+        + team_career_bytes
+        + manager_season_bytes
+        + manager_career_bytes
+    )
     aggregate_disk_bytes = directory_size_bytes(aggregates_dir)
     total_output_disk_bytes = directory_size_bytes(base_output)
     rss_after_aggregates = process_rss_bytes()
@@ -512,6 +572,8 @@ def main() -> None:
         player_career=len(player_career_df),
         team_season=len(team_season_df),
         team_career=len(team_career_df),
+        manager_season=len(manager_season_df),
+        manager_career=len(manager_career_df),
     )
     log_metric(
         "resource_usage",
@@ -538,6 +600,8 @@ def main() -> None:
             ("player_career", str(len(player_career_df))),
             ("team_season", str(len(team_season_df))),
             ("team_career", str(len(team_career_df))),
+            ("manager_season", str(len(manager_season_df))),
+            ("manager_career", str(len(manager_career_df))),
             ("snapshot", f"{bytes_to_gb(total_output_disk_bytes):0.3f} GB"),
         ],
         tone="33",
@@ -545,7 +609,8 @@ def main() -> None:
     reporter.success(
         "aggregate rows written: "
         f"player_season={len(player_season_df)} player_career={len(player_career_df)} "
-        f"team_season={len(team_season_df)} team_career={len(team_career_df)}"
+        f"team_season={len(team_season_df)} team_career={len(team_career_df)} "
+        f"manager_season={len(manager_season_df)} manager_career={len(manager_career_df)}"
     )
 
     manifest = build_manifest(
@@ -560,6 +625,8 @@ def main() -> None:
         player_career_rows=len(player_career_df),
         team_season_rows=len(team_season_df),
         team_career_rows=len(team_career_df),
+        manager_season_rows=len(manager_season_df),
+        manager_career_rows=len(manager_career_df),
     )
 
     local_manifest_path = base_output / "manifest.json"
@@ -601,6 +668,7 @@ def main() -> None:
             print(
                 f"SUMMARY elapsed={elapsed_total:0.1f}s detail_rows={detail_rows} "
                 f"player_season={len(player_season_df)} team_season={len(team_season_df)} "
+                f"manager_season={len(manager_season_df)} manager_career={len(manager_career_df)} "
                 f"datasets={','.join(source_datasets) if source_datasets else 'none'} "
                 f"processed_gb={bytes_to_gb(detail_df_bytes + aggregate_df_bytes):0.3f} "
                 f"snapshot_disk_gb={bytes_to_gb(total_output_disk_bytes):0.3f} "
