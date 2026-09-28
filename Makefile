@@ -1,6 +1,6 @@
 export GIT_COMMIT_SHA = $(shell git rev-parse HEAD)
 
-.PHONY: notebook-build-publish-deploy hub-build-publish-deploy mlb-data-pipeline-build-publish mlb-data-pipeline-refresh-job mlb-data-pipeline-apply-cronjob mlb-data-pipeline-local-install mlb-data-pipeline-local-run mlb-data-pipeline-local-run-upload mlb-data-pipeline-local-bootstrap mlb-data-pipeline-local-bootstrap-upload mlb-data-pipeline-local-wizard mlb-data-pipeline-bootstrap-estimate mlb-data-pipeline-test gke-jupyter gke-jupyter-with-data delete-gke-jupyter
+.PHONY: notebook-build-publish-deploy hub-build-publish-deploy mlb-data-pipeline-build-publish mlb-data-pipeline-refresh-job mlb-data-pipeline-apply-cronjob mlb-data-pipeline-local-install mlb-data-pipeline-local-run mlb-data-pipeline-local-run-upload mlb-data-pipeline-local-bootstrap mlb-data-pipeline-local-bootstrap-upload mlb-data-pipeline-local-wizard mlb-data-pipeline-bootstrap-estimate mlb-data-pipeline-test doks-jupyter doks-jupyter-with-data delete-doks-jupyter
 
 notebook-build-publish-deploy:
 	cd ./jupyter-datascience-notebook && make kubernetes
@@ -41,9 +41,9 @@ mlb-data-pipeline-bootstrap-estimate:
 mlb-data-pipeline-test:
 	cd ./mlb-data-pipeline && make test
 
-gke-jupyter: notebook-build-publish-deploy hub-build-publish-deploy
+doks-jupyter: notebook-build-publish-deploy hub-build-publish-deploy
 
-gke-jupyter-with-data: gke-jupyter mlb-data-pipeline-build-publish mlb-data-pipeline-refresh-job
+doks-jupyter-with-data: doks-jupyter mlb-data-pipeline-build-publish mlb-data-pipeline-refresh-job
 
-delete-gke-jupyter:
+delete-doks-jupyter:
 	cd ./jupyter-hub && make delete-kubernetes

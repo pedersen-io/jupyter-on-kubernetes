@@ -24,9 +24,7 @@ pipeline {
         sh '''
           set -eu
 
-          [ -n "${GCLOUD_PROJECT_ID:-}" ] || { echo "GCLOUD_PROJECT_ID is required"; exit 1; }
           command -v docker >/dev/null 2>&1 || { echo "docker is required"; exit 1; }
-          command -v gcloud >/dev/null 2>&1 || { echo "gcloud is required"; exit 1; }
           command -v kubectl >/dev/null 2>&1 || { echo "kubectl is required"; exit 1; }
         '''
       }
@@ -59,8 +57,7 @@ pipeline {
         sh '''
           set -eu
 
-          sed -e "s/%GCLOUD_PROJECT_ID%/${GCLOUD_PROJECT_ID}/g" \
-              -e "s/%GIT_COMMIT_SHA%/${GIT_COMMIT_SHA}/g" \
+          sed -e "s/%GIT_COMMIT_SHA%/${GIT_COMMIT_SHA}/g" \
               ./jupyter-hub/kubernetes-deployment.yaml > ./jupyter-hub/deployment.ci.yaml
 
           kubectl apply --dry-run=client -f ./jupyter-hub/deployment.ci.yaml

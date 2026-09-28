@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: jupyter-hub
-        image: us.gcr.io/%GCLOUD_PROJECT_ID%/jupyter-hub:%GIT_COMMIT_SHA%
+        image: docker.io/derekpedersen/jupyter-hub:%GIT_COMMIT_SHA%
         ports:
         - containerPort: 8000    
         - containerPort: 8081

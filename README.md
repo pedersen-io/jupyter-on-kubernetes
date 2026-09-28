@@ -1,6 +1,6 @@
-# GKE Jupyter Hub 
+# DOKS Jupyter Hub 
 
-This is the repository that holds the deployment configuration for a jupyter-hub to gke
+This is the repository that holds the deployment configuration for a jupyter-hub on DOKS
 
 ## Local Commands
 
@@ -27,13 +27,13 @@ make -C jupyter-hub deploy
 Run full orchestration:
 
 ```bash
-make gke-jupyter
+make doks-jupyter
 ```
 
 Run full orchestration with baseball data refresh:
 
 ```bash
-make gke-jupyter-with-data
+make doks-jupyter-with-data
 ```
 
 ## Baseball Data Pipeline
@@ -101,12 +101,11 @@ This provides a common starting point for querying latest pipeline snapshots.
 
 Required CI environment variables:
 
-- `GCLOUD_PROJECT_ID`
+Docker Hub credentials for publishing images are configured in the Jenkins credentials store.
 
 Tooling expected on Jenkins agents:
 
 - Docker CLI
-- gcloud CLI
 - kubectl
 
 ## Dependency Updates

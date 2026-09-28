@@ -4,14 +4,14 @@
 
 - Docker
 - kubectl
-- gcloud CLI authenticated to your project
-- Access to the target GKE cluster
+- Access to the target DOKS cluster
+- Docker Hub access for publishing images
 
 ## Environment Variables
 
 Set these before running publish or deploy commands:
 
-- `GCLOUD_PROJECT_ID`
+- `DOCKER_HUB_NAMESPACE` (optional; defaults to `derekpedersen`)
 - `OAUTH_CALLBACK_URL` (used by JupyterHub config templating)
 
 GitHub OAuth values are provided through Kubernetes secrets:
@@ -35,6 +35,8 @@ make -C jupyter-datascience-notebook publish
 make -C jupyter-hub publish
 ```
 
+The publish targets tag and push to Docker Hub using `DOCKER_HUB_NAMESPACE`.
+
 Deploy JupyterHub manifests:
 
 ```bash
@@ -44,7 +46,7 @@ make -C jupyter-hub deploy
 End-to-end orchestration:
 
 ```bash
-make gke-jupyter
+make doks-jupyter
 ```
 
 ## CI/CD Expectations
