@@ -60,8 +60,8 @@ pipeline {
           sed -e "s/%GIT_COMMIT_SHA%/${GIT_COMMIT_SHA}/g" \
               ./jupyter-hub/kubernetes-deployment.yaml > ./jupyter-hub/deployment.ci.yaml
 
-          kubectl apply --dry-run=client -f ./jupyter-hub/deployment.ci.yaml
-          kubectl apply --dry-run=client -f ./jupyter-hub/kubernetes-service.yaml
+          kubectl create --dry-run=client --validate=false -f ./jupyter-hub/deployment.ci.yaml -o yaml >/dev/null
+          kubectl create --dry-run=client --validate=false -f ./jupyter-hub/kubernetes-service.yaml -o yaml >/dev/null
 
           rm -f ./jupyter-hub/deployment.ci.yaml
         '''
