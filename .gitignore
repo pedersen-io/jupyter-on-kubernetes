@@ -4,6 +4,7 @@
 mlb-data-pipeline/kubernetes-job.rendered.yaml
 mlb-data-pipeline/kubernetes-cronjob.rendered.yaml
 mlb-data-pipeline/output/
+mlb-data-pipeline/.venv/
 
 # Python artifacts
 **/__pycache__/
