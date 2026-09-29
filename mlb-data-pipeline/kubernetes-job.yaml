@@ -1,0 +1,71 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: baseball-data-bootstrap-%GIT_COMMIT_SHA%
+  labels:
+    app: baseball-mlb-data-pipeline
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: baseball-mlb-data-pipeline
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: pipeline
+        image: %DATA_PIPELINE_IMAGE%
+        env:
+        - name: START_SEASON
+          value: "1871"
+        - name: END_SEASON
+          value: "2026"
+        - name: OUTPUT_DIR
+          value: "/tmp/output"
+        - name: DATASET_PREFIX
+          value: "baseball"
+        - name: UPLOAD_ENABLED
+          value: "true"
+        - name: INCREMENTAL_MODE
+          value: "false"
+        - name: REQUIRE_EXISTING_SNAPSHOT
+          value: "false"
+        - name: LAHMAN_ENABLED
+          value: "true"
+        - name: LAHMAN_START_SEASON
+          value: "1871"
+        - name: LAHMAN_END_SEASON
+          value: "2014"
+        - name: SPACES_BUCKET
+          valueFrom:
+            secretKeyRef:
+              name: do-spaces-baseball
+              key: bucket
+        - name: SPACES_REGION
+          valueFrom:
+            secretKeyRef:
+              name: do-spaces-baseball
+              key: region
+        - name: SPACES_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: do-spaces-baseball
+              key: endpoint
+        - name: SPACES_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: do-spaces-baseball
+              key: access_key_id
+        - name: SPACES_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: do-spaces-baseball
+              key: secret_access_key
+        resources:
+          requests:
+            cpu: "750m"
+            memory: "4Gi"
+          limits:
+            cpu: "2"
+            memory: "8Gi"

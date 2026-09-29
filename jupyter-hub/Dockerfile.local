@@ -1,0 +1,9 @@
+FROM jupyterhub/jupyterhub
+
+RUN python3 -m pip install --no-cache-dir \
+    jupyter \
+    dockerspawner
+
+RUN mkdir -p /etc/jupyter-hub /srv/jupyterhub
+
+CMD ["jupyterhub", "-f", "/etc/jupyter-hub/jupyter-hub_config.py"]

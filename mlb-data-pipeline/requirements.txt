@@ -1,0 +1,4 @@
+pandas==2.3.2
+pyarrow==21.0.0
+pybaseball==2.2.7
+boto3==1.39.11

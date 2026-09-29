@@ -1,0 +1,16 @@
+version: 2
+updates:
+  - package-ecosystem: "docker"
+    directory: "/jupyter-hub"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directory: "/jupyter-datascience-notebook"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directory: "/mlb-data-pipeline"
+    schedule:
+      interval: "weekly"
