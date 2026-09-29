@@ -162,7 +162,8 @@ def build_manifest(
         outputs["detail"] = {
             "path": f"{config.dataset_prefix}/snapshots/{snapshot_id}/detail/",
             "rows": detail_rows,
-            "partitioning": ["season", "month"],
+            "partitioning": ["season"] if config.partition_mode == "season" else ["season", "month"],
+            "compression": config.parquet_compression,
         }
 
     aggregates: dict = {}
@@ -210,8 +211,10 @@ def build_manifest(
             "sample_end_date": config.sample_end_date,
             "sample_max_rows": config.sample_max_rows,
             "sample_max_windows": config.sample_max_windows,
+            "partition_mode": config.partition_mode,
             "include_detail_dataset": config.include_detail_dataset,
             "include_aggregate_datasets": config.include_aggregate_datasets,
+            "parquet_compression": config.parquet_compression,
             "include_player_aggregates": config.include_player_aggregates,
             "include_team_aggregates": config.include_team_aggregates,
             "include_manager_aggregates": config.include_manager_aggregates,
@@ -438,7 +441,12 @@ def main() -> None:
         detail_df = pd.DataFrame()
 
     if config.include_detail_dataset:
-        detail_rows = write_detail_dataset(detail_df, detail_dir)
+        detail_rows = write_detail_dataset(
+            detail_df,
+            detail_dir,
+            compression=config.parquet_compression,
+            partition_mode=config.partition_mode,
+        )
     else:
         detail_rows = 0
     detail_df_bytes = dataframe_bytes(detail_df)
@@ -632,6 +640,7 @@ def main() -> None:
             manager_season_out,
             manager_career_out,
             aggregates_dir,
+            compression=config.parquet_compression,
         )
 
     player_season_rows = len(player_season_out) if player_season_out is not None else 0

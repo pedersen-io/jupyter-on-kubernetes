@@ -5,7 +5,7 @@ import unittest
 
 import test_helpers  # noqa: F401
 
-from config import get_config, parse_bool, parse_int
+from config import get_config, parse_bool, parse_int, parse_parquet_compression, parse_partition_mode
 
 
 class ConfigTests(unittest.TestCase):
@@ -21,6 +21,24 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(parse_int("", 7), 7)
         self.assertEqual(parse_int("5", 7), 5)
 
+    def test_parse_parquet_compression_accepts_valid_values(self):
+        self.assertEqual(parse_parquet_compression("zstd"), "zstd")
+        self.assertEqual(parse_parquet_compression(" GZIP "), "gzip")
+        self.assertEqual(parse_parquet_compression("none"), "none")
+        self.assertEqual(parse_parquet_compression("uncompressed"), "none")
+
+    def test_parse_parquet_compression_rejects_invalid_values(self):
+        with self.assertRaisesRegex(ValueError, "PARQUET_COMPRESSION"):
+            parse_parquet_compression("7zip")
+
+    def test_parse_partition_mode_accepts_valid_values(self):
+        self.assertEqual(parse_partition_mode("season"), "season")
+        self.assertEqual(parse_partition_mode("SEASON_MONTH"), "season_month")
+
+    def test_parse_partition_mode_rejects_invalid_values(self):
+        with self.assertRaisesRegex(ValueError, "PARTITION_MODE"):
+            parse_partition_mode("month")
+
     def test_get_config_applies_defaults(self):
         with patch.dict(os.environ, {}, clear=True):
             config = get_config()
@@ -32,6 +50,8 @@ class ConfigTests(unittest.TestCase):
         self.assertFalse(config.upload_enabled)
         self.assertTrue(config.incremental_mode)
         self.assertEqual(config.source_overlap_policy, "statcast_preferred")
+        self.assertEqual(config.parquet_compression, "snappy")
+        self.assertEqual(config.partition_mode, "season_month")
         self.assertTrue(config.include_detail_dataset)
         self.assertTrue(config.include_aggregate_datasets)
         self.assertTrue(config.include_player_aggregates)

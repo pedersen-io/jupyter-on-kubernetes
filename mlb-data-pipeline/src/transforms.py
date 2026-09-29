@@ -299,7 +299,7 @@ def fetch_detail_dataframe(config, windows: Iterable[Tuple[int, int, str, str]])
     return detail_df
 
 
-def write_detail_dataset(detail_df: pd.DataFrame, detail_dir) -> int:
+def write_detail_dataset(detail_df: pd.DataFrame, detail_dir, compression: str = "snappy", partition_mode: str = "season_month") -> int:
     import pyarrow as pa
     import pyarrow.dataset as ds
 
@@ -308,14 +308,17 @@ def write_detail_dataset(detail_df: pd.DataFrame, detail_dir) -> int:
         return 0
 
     table = pa.Table.from_pandas(detail_df, preserve_index=False)
+    partitioning = ["season"] if partition_mode == "season" else ["season", "month"]
+    file_options = ds.ParquetFileFormat().make_write_options(compression=compression)
     ds.write_dataset(
         table,
         base_dir=str(detail_dir),
         format="parquet",
-        partitioning=["season", "month"],
+        partitioning=partitioning,
         existing_data_behavior="delete_matching",
         max_rows_per_group=250_000,
         max_rows_per_file=500_000,
+        file_options=file_options,
     )
 
     return len(detail_df)
@@ -798,17 +801,19 @@ def write_aggregate_tables(
     manager_season_df: pd.DataFrame | None,
     manager_career_df: pd.DataFrame | None,
     aggregates_dir,
+    compression: str = "snappy",
 ) -> None:
     aggregates_dir.mkdir(parents=True, exist_ok=True)
+    parquet_compression = None if compression == "none" else compression
     if player_season_df is not None:
-        player_season_df.to_parquet(aggregates_dir / "player_season_metrics.parquet", index=False)
+        player_season_df.to_parquet(aggregates_dir / "player_season_metrics.parquet", index=False, compression=parquet_compression)
     if player_career_df is not None:
-        player_career_df.to_parquet(aggregates_dir / "player_career_metrics.parquet", index=False)
+        player_career_df.to_parquet(aggregates_dir / "player_career_metrics.parquet", index=False, compression=parquet_compression)
     if team_season_df is not None:
-        team_season_df.to_parquet(aggregates_dir / "team_season_metrics.parquet", index=False)
+        team_season_df.to_parquet(aggregates_dir / "team_season_metrics.parquet", index=False, compression=parquet_compression)
     if team_career_df is not None:
-        team_career_df.to_parquet(aggregates_dir / "team_career_metrics.parquet", index=False)
+        team_career_df.to_parquet(aggregates_dir / "team_career_metrics.parquet", index=False, compression=parquet_compression)
     if manager_season_df is not None:
-        manager_season_df.to_parquet(aggregates_dir / "manager_season_metrics.parquet", index=False)
+        manager_season_df.to_parquet(aggregates_dir / "manager_season_metrics.parquet", index=False, compression=parquet_compression)
     if manager_career_df is not None:
-        manager_career_df.to_parquet(aggregates_dir / "manager_career_metrics.parquet", index=False)
+        manager_career_df.to_parquet(aggregates_dir / "manager_career_metrics.parquet", index=False, compression=parquet_compression)
