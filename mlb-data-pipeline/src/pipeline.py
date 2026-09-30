@@ -28,13 +28,14 @@ from storage import (
     write_json_file,
 )
 from transforms import (
+    build_detail_storage_tables,
     build_player_career_aggregates,
     build_player_season_aggregates,
     build_team_career_aggregates,
     build_team_season_aggregates,
     fetch_detail_dataframe,
     write_aggregate_tables,
-    write_detail_dataset,
+    write_detail_datasets,
 )
 from windows import add_months, full_refresh_windows, iter_date_windows, month_start, parse_date
 
@@ -149,6 +150,12 @@ def build_manifest(
     source_datasets: List[str],
     lahman_mapping_quality: Optional[dict],
     detail_rows: Optional[int],
+    detail_tracking_rows: Optional[int],
+    player_dimension_rows: Optional[int],
+    team_dimension_rows: Optional[int],
+    event_dimension_rows: Optional[int],
+    pitch_type_dimension_rows: Optional[int],
+    bb_type_dimension_rows: Optional[int],
     player_season_rows: Optional[int],
     player_career_rows: Optional[int],
     team_season_rows: Optional[int],
@@ -165,6 +172,33 @@ def build_manifest(
             "partitioning": ["season"] if config.partition_mode == "season" else ["season", "month"],
             "compression": config.parquet_compression,
         }
+
+    if detail_tracking_rows is not None:
+        outputs["detail_tracking"] = {
+            "path": f"{config.dataset_prefix}/snapshots/{snapshot_id}/detail_tracking/",
+            "rows": detail_tracking_rows,
+            "partitioning": ["season"] if config.partition_mode == "season" else ["season", "month"],
+            "compression": config.parquet_compression,
+        }
+
+    dimensions: dict = {}
+    if player_dimension_rows is not None:
+        dimensions["players"] = f"{config.dataset_prefix}/snapshots/{snapshot_id}/dimensions/players.parquet"
+        dimensions["player_rows"] = player_dimension_rows
+    if team_dimension_rows is not None:
+        dimensions["teams"] = f"{config.dataset_prefix}/snapshots/{snapshot_id}/dimensions/teams.parquet"
+        dimensions["team_rows"] = team_dimension_rows
+    if event_dimension_rows is not None:
+        dimensions["event_types"] = f"{config.dataset_prefix}/snapshots/{snapshot_id}/dimensions/event_types.parquet"
+        dimensions["event_rows"] = event_dimension_rows
+    if pitch_type_dimension_rows is not None:
+        dimensions["pitch_types"] = f"{config.dataset_prefix}/snapshots/{snapshot_id}/dimensions/pitch_types.parquet"
+        dimensions["pitch_type_rows"] = pitch_type_dimension_rows
+    if bb_type_dimension_rows is not None:
+        dimensions["batted_ball_types"] = f"{config.dataset_prefix}/snapshots/{snapshot_id}/dimensions/batted_ball_types.parquet"
+        dimensions["batted_ball_rows"] = bb_type_dimension_rows
+    if dimensions:
+        outputs["dimensions"] = dimensions
 
     aggregates: dict = {}
     if player_season_rows is not None:
@@ -426,6 +460,8 @@ def main() -> None:
 
     base_output = config.output_dir / config.dataset_prefix / snapshot_id
     detail_dir = base_output / "detail"
+    detail_tracking_dir = base_output / "detail_tracking"
+    dimensions_dir = base_output / "dimensions"
     aggregates_dir = base_output / "aggregates"
     base_output.mkdir(parents=True, exist_ok=True)
     fs_free_before = filesystem_free_bytes(base_output)
@@ -440,17 +476,34 @@ def main() -> None:
     else:
         detail_df = pd.DataFrame()
 
+    detail_storage_tables = None
+
     if config.include_detail_dataset:
-        detail_rows = write_detail_dataset(
+        detail_storage_tables = build_detail_storage_tables(detail_df)
+        detail_outputs = write_detail_datasets(
             detail_df,
-            detail_dir,
+            base_output,
             compression=config.parquet_compression,
             partition_mode=config.partition_mode,
+            storage_tables=detail_storage_tables,
         )
+        detail_rows = detail_outputs["detail_rows"]
+        detail_tracking_rows = detail_outputs["detail_tracking_rows"]
+        player_dimension_rows = detail_outputs["player_dimension_rows"]
+        team_dimension_rows = detail_outputs["team_dimension_rows"]
+        event_dimension_rows = detail_outputs["event_dimension_rows"]
+        pitch_type_dimension_rows = detail_outputs["pitch_type_dimension_rows"]
+        bb_type_dimension_rows = detail_outputs["bb_type_dimension_rows"]
     else:
         detail_rows = 0
+        detail_tracking_rows = 0
+        player_dimension_rows = 0
+        team_dimension_rows = 0
+        event_dimension_rows = 0
+        pitch_type_dimension_rows = 0
+        bb_type_dimension_rows = 0
     detail_df_bytes = dataframe_bytes(detail_df)
-    detail_disk_bytes = directory_size_bytes(detail_dir)
+    detail_disk_bytes = directory_size_bytes(detail_dir) + directory_size_bytes(detail_tracking_dir) + directory_size_bytes(dimensions_dir)
     rss_after_detail = process_rss_bytes()
     log_metric("detail_rows_written", rows=detail_rows)
     log_metric(
@@ -474,6 +527,7 @@ def main() -> None:
         "Detail Metrics",
         [
             ("rows", str(detail_rows)),
+            ("tracking", str(detail_tracking_rows)),
             ("frame", f"{bytes_to_gb(detail_df_bytes):0.3f} GB"),
             ("disk", f"{bytes_to_gb(detail_disk_bytes):0.3f} GB"),
             ("rss", f"{bytes_to_gb(rss_after_detail):0.3f} GB" if rss_after_detail is not None else "n/a"),
@@ -530,7 +584,13 @@ def main() -> None:
     need_manager_seed = include_manager and (include_season or include_career)
 
     if need_player_seed:
-        player_season_df = build_player_season_aggregates(detail_df, source_system="statcast")
+        if detail_storage_tables is None:
+            detail_storage_tables = build_detail_storage_tables(detail_df)
+        player_season_df = build_player_season_aggregates(
+            detail_df,
+            source_system="statcast",
+            player_dimension_df=detail_storage_tables["players"],
+        )
     if need_team_seed:
         team_season_df = build_team_season_aggregates(detail_df, source_system="statcast")
 
@@ -724,6 +784,12 @@ def main() -> None:
         source_datasets=source_datasets,
         lahman_mapping_quality=lahman_mapping_quality,
         detail_rows=(detail_rows if config.include_detail_dataset else None),
+        detail_tracking_rows=(detail_tracking_rows if config.include_detail_dataset else None),
+        player_dimension_rows=(player_dimension_rows if config.include_detail_dataset else None),
+        team_dimension_rows=(team_dimension_rows if config.include_detail_dataset else None),
+        event_dimension_rows=(event_dimension_rows if config.include_detail_dataset else None),
+        pitch_type_dimension_rows=(pitch_type_dimension_rows if config.include_detail_dataset else None),
+        bb_type_dimension_rows=(bb_type_dimension_rows if config.include_detail_dataset else None),
         player_season_rows=(player_season_rows if player_season_out is not None else None),
         player_career_rows=(player_career_rows if player_career_out is not None else None),
         team_season_rows=(team_season_rows if team_season_out is not None else None),
@@ -785,6 +851,10 @@ def main() -> None:
     snapshot_prefix = f"{config.dataset_prefix}/snapshots/{snapshot_id}"
     if config.include_detail_dataset and detail_dir.exists():
         upload_directory(client, config.spaces_bucket, detail_dir, f"{snapshot_prefix}/detail")
+    if config.include_detail_dataset and detail_tracking_dir.exists():
+        upload_directory(client, config.spaces_bucket, detail_tracking_dir, f"{snapshot_prefix}/detail_tracking")
+    if config.include_detail_dataset and dimensions_dir.exists():
+        upload_directory(client, config.spaces_bucket, dimensions_dir, f"{snapshot_prefix}/dimensions")
     if config.include_aggregate_datasets and aggregates_dir.exists():
         upload_directory(client, config.spaces_bucket, aggregates_dir, f"{snapshot_prefix}/aggregates")
     upload_manifest(client, config.spaces_bucket, manifest, f"{snapshot_prefix}/manifest.json")

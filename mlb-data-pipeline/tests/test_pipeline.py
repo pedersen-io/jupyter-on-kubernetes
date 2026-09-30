@@ -49,6 +49,12 @@ class PipelineTests(unittest.TestCase):
             ["statcast", "lahman"],
             mapping_quality,
             10,
+            10,
+            2,
+            3,
+            4,
+            5,
+            6,
             2,
             1,
             3,
@@ -61,6 +67,9 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(manifest["source"]["datasets"], ["statcast", "lahman"])
         self.assertEqual(manifest["source"]["lahman_mapping_quality"], mapping_quality)
         self.assertEqual(manifest["outputs"]["detail"]["rows"], 10)
+        self.assertEqual(manifest["outputs"]["detail_tracking"]["rows"], 10)
+        self.assertEqual(manifest["outputs"]["dimensions"]["player_rows"], 2)
+        self.assertEqual(manifest["outputs"]["dimensions"]["team_rows"], 3)
         self.assertIn("team_season_metrics", manifest["outputs"]["aggregates"])
         self.assertIn("team_career_metrics", manifest["outputs"]["aggregates"])
         self.assertIn("manager_season_metrics", manifest["outputs"]["aggregates"])
@@ -87,6 +96,11 @@ class PipelineTests(unittest.TestCase):
             None,
             None,
             None,
+            None,
+            None,
+            None,
+            None,
+            None,
             12,
             None,
             None,
@@ -95,6 +109,8 @@ class PipelineTests(unittest.TestCase):
         )
 
         self.assertNotIn("detail", manifest["outputs"])
+        self.assertNotIn("detail_tracking", manifest["outputs"])
+        self.assertNotIn("dimensions", manifest["outputs"])
         self.assertIn("aggregates", manifest["outputs"])
         self.assertNotIn("player_season_metrics", manifest["outputs"]["aggregates"])
         self.assertIn("player_career_metrics", manifest["outputs"]["aggregates"])

@@ -10,7 +10,14 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - environment dependent
     pd = None
 
-from transforms import build_player_season_aggregates, build_team_season_aggregates, fetch_detail_dataframe
+from transforms import (
+    build_detail_storage_tables,
+    build_player_dimension_table,
+    build_player_season_aggregates,
+    build_team_season_aggregates,
+    fetch_detail_dataframe,
+    normalize_detail_dataframe,
+)
 from transforms import _format_window_label, _preview_windows, _summarize_window_years, _window_queue_entries
 
 
@@ -58,6 +65,169 @@ class TransformTests(unittest.TestCase):
 
         fetch_window.assert_called_once_with("2024-03-01", "2024-03-31", suppress_noise=False)
 
+    def test_normalize_detail_dataframe_prunes_columns_and_compacts_types(self):
+        detail_df = pd.DataFrame(
+            [
+                {
+                    "game_date": "2024-03-28",
+                    "game_pk": "746321",
+                    "at_bat_number": "12",
+                    "pitch_number": "3",
+                    "season": 2024,
+                    "month": "03",
+                    "inning": 7,
+                    "home_team": "SEA",
+                    "away_team": "NYY",
+                    "inning_topbot": "Top",
+                    "outs_when_up": 1,
+                    "balls": 2,
+                    "strikes": 1,
+                    "batter": "123456",
+                    "pitcher": "654321",
+                    "player_name": "Player A",
+                    "stand": "R",
+                    "pitch_type": "FF",
+                    "events": "single",
+                    "bb_type": "line_drive",
+                    "zone": 5,
+                    "release_speed": "95.1",
+                    "launch_speed": "101.2",
+                    "pitch_name": "4-Seam Fastball",
+                    "game_year": 2024,
+                }
+            ]
+        )
+
+        result = normalize_detail_dataframe(detail_df)
+
+        self.assertNotIn("pitch_name", result.columns)
+        self.assertNotIn("game_year", result.columns)
+        self.assertIn("events", result.columns)
+        self.assertEqual(str(result["game_pk"].dtype), "Int32")
+        self.assertEqual(str(result["at_bat_number"].dtype), "Int16")
+        self.assertEqual(str(result["pitch_number"].dtype), "Int8")
+        self.assertEqual(str(result["season"].dtype), "Int16")
+        self.assertEqual(str(result["batting_team"].dtype), "category")
+        self.assertEqual(str(result["pitch_type"].dtype), "category")
+        self.assertEqual(str(result["player_name"].dtype), "string")
+        self.assertEqual(str(result["release_speed"].dtype), "Float32")
+        self.assertTrue(pd.api.types.is_datetime64_any_dtype(result["game_date"]))
+
+    def test_fetch_detail_dataframe_returns_canonical_detail_schema(self):
+        config = SimpleNamespace(
+            pretty_local_output=False,
+            sample_mode=False,
+            sample_max_rows=20000,
+            sample_random_state=42,
+        )
+        fetched = pd.DataFrame(
+            [
+                {
+                    "game_date": "2024-03-28",
+                    "game_pk": 1,
+                    "at_bat_number": 1,
+                    "pitch_number": 1,
+                    "home_team": "SEA",
+                    "away_team": "NYY",
+                    "inning_topbot": "Top",
+                    "events": "single",
+                    "player_name": "Player A",
+                    "batter": 100,
+                    "pitch_name": "4-Seam Fastball",
+                }
+            ]
+        )
+
+        with patch("transforms._fetch_statcast_window", return_value=fetched):
+            result = fetch_detail_dataframe(config, [(2024, 3, "2024-03-01", "2024-03-31")])
+
+        self.assertNotIn("pitch_name", result.columns)
+        self.assertEqual(result.iloc[0]["month"], "03")
+        self.assertEqual(str(result["events"].dtype), "category")
+        self.assertEqual(str(result["batting_team"].dtype), "category")
+        self.assertEqual(str(result["pitch_type"].dtype), "category")
+        self.assertEqual(int(result.iloc[0]["season"]), 2024)
+
+    def test_build_detail_storage_tables_splits_core_tracking_and_dimensions(self):
+        detail_df = pd.DataFrame(
+            [
+                {
+                    "game_date": pd.Timestamp("2024-03-28"),
+                    "game_pk": 1,
+                    "at_bat_number": 1,
+                    "pitch_number": 1,
+                    "season": 2024,
+                    "month": "03",
+                    "inning": 1,
+                    "outs_when_up": 0,
+                    "balls": 0,
+                    "strikes": 0,
+                    "batter": 100,
+                    "pitcher": 200,
+                    "player_name": "Player A",
+                    "stand": "R",
+                    "batting_team": "NYY",
+                    "pitch_type": "FF",
+                    "events": "single",
+                    "bb_type": "line_drive",
+                    "zone": 5,
+                    "release_speed": 95.1,
+                    "launch_speed": 101.2,
+                }
+            ]
+        )
+
+        bundle = build_detail_storage_tables(detail_df)
+
+        self.assertNotIn("player_name", bundle["detail"].columns)
+        self.assertNotIn("batting_team", bundle["detail"].columns)
+        self.assertIn("batting_team_id", bundle["detail"].columns)
+        self.assertIn("event_code", bundle["detail"].columns)
+        self.assertIn("release_speed", bundle["detail_tracking"].columns)
+        self.assertEqual(str(bundle["detail"]["batting_team_id"].dtype), "Int8")
+        self.assertEqual(str(bundle["detail"]["event_code"].dtype), "Int8")
+        self.assertEqual(str(bundle["detail"]["pitch_type_code"].dtype), "Int8")
+        self.assertEqual(str(bundle["detail"]["bb_type_code"].dtype), "Int8")
+        self.assertEqual(list(bundle["players"].columns), ["batter", "player_name", "stand"])
+        self.assertEqual(list(bundle["teams"].columns), ["team_id", "team"])
+        self.assertEqual(bundle["players"].iloc[0]["player_name"], "Player A")
+        self.assertEqual(bundle["teams"].iloc[0]["team"], "NYY")
+
+    def test_player_dimension_drives_aggregate_name_resolution(self):
+        detail_df = pd.DataFrame(
+            [
+                {
+                    "game_date": pd.Timestamp("2024-03-27"),
+                    "game_pk": 1,
+                    "at_bat_number": 1,
+                    "pitch_number": 1,
+                    "season": 2024,
+                    "month": "03",
+                    "batter": 100,
+                    "player_name": "Player Old",
+                    "stand": "R",
+                    "events": "single",
+                },
+                {
+                    "game_date": pd.Timestamp("2024-03-28"),
+                    "game_pk": 2,
+                    "at_bat_number": 1,
+                    "pitch_number": 1,
+                    "season": 2024,
+                    "month": "03",
+                    "batter": 100,
+                    "player_name": "Player New",
+                    "stand": "R",
+                    "events": "double",
+                },
+            ]
+        )
+
+        player_dimension = build_player_dimension_table(detail_df)
+        result = build_player_season_aggregates(detail_df, player_dimension_df=player_dimension)
+
+        self.assertEqual(result.iloc[0]["player_name"], "Player New")
+
     def test_team_season_aggregates_include_rate_stats(self):
         detail_df = pd.DataFrame(
             [
@@ -66,36 +236,28 @@ class TransformTests(unittest.TestCase):
                     "game_pk": 1,
                     "at_bat_number": 1,
                     "season": 2024,
-                    "inning_topbot": "Top",
-                    "home_team": "SEA",
-                    "away_team": "NYY",
+                    "batting_team": "NYY",
                 },
                 {
                     "events": "double",
                     "game_pk": 1,
                     "at_bat_number": 2,
                     "season": 2024,
-                    "inning_topbot": "Top",
-                    "home_team": "SEA",
-                    "away_team": "NYY",
+                    "batting_team": "NYY",
                 },
                 {
                     "events": "walk",
                     "game_pk": 1,
                     "at_bat_number": 3,
                     "season": 2024,
-                    "inning_topbot": "Top",
-                    "home_team": "SEA",
-                    "away_team": "NYY",
+                    "batting_team": "NYY",
                 },
                 {
                     "events": "home_run",
                     "game_pk": 1,
                     "at_bat_number": 4,
                     "season": 2024,
-                    "inning_topbot": "Top",
-                    "home_team": "SEA",
-                    "away_team": "NYY",
+                    "batting_team": "NYY",
                 },
             ]
         )
@@ -166,18 +328,14 @@ class TransformTests(unittest.TestCase):
                     "game_pk": 1,
                     "at_bat_number": 1,
                     "season": 2024,
-                    "inning_topbot": "Top",
-                    "home_team": "SEA",
-                    "away_team": "NYY",
+                    "batting_team": "NYY",
                 },
                 {
                     "events": "single",
                     "game_pk": 1,
                     "at_bat_number": 2,
                     "season": 2024,
-                    "inning_topbot": "Top",
-                    "home_team": "SEA",
-                    "away_team": "NYY",
+                    "batting_team": "NYY",
                 },
             ]
         )

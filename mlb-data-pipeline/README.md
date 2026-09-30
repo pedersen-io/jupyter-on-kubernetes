@@ -15,7 +15,13 @@ Jupyter users can start from the shared notebook template copied into their work
 
 ## Outputs
 
-- Detail dataset: partitioned by `season` and `month`
+- Detail core dataset: partitioned by `season` and `month`
+- Detail tracking dataset: partitioned by `season` and `month`
+- Dimension dataset: `players.parquet`
+- Dimension dataset: `teams.parquet`
+- Dimension dataset: `event_types.parquet`
+- Dimension dataset: `pitch_types.parquet`
+- Dimension dataset: `batted_ball_types.parquet`
 - Aggregate dataset: `player_season_metrics.parquet`
 - Aggregate dataset: `player_career_metrics.parquet`
 - Aggregate dataset: `team_season_metrics.parquet`
@@ -24,6 +30,12 @@ Jupyter users can start from the shared notebook template copied into their work
 - Aggregate dataset: `manager_career_metrics.parquet`
 - Snapshot manifest: `manifest.json`
 - Latest pointer: `latest.json`
+
+The detail layer is now split into a compact core Statcast table plus a separate tracking sidecar. The core table keeps query-facing identifiers, game context, and encoded outcome fields. The tracking sidecar holds optional pitch-flight and contact measurements keyed by the same pitch identity fields.
+
+Repeated entities and low-cardinality values are normalized rather than repeated row-by-row: player names live in `players.parquet`, team abbreviations live in `teams.parquet`, and enum-like fields such as events, pitch types, and batted-ball types are stored as integer codes with dimension tables.
+
+The core detail table stores `game_date` as a date-only value, keeps `batting_team` in normalized ID form instead of storing both `home_team` and `away_team`, and writes tracking measurements as `float32` values to cut disk usage further.
 
 Player and team aggregate outputs include counting stats plus query-friendly rate stats: `avg`, `obp`, `slg`, and `ops` (with career-prefixed variants in career tables).
 
@@ -133,7 +145,7 @@ make -C mlb-data-pipeline local-bootstrap-zstd \
 	OUTPUT_DIR=$(pwd)/mlb-data-pipeline/output
 ```
 
-`PARQUET_COMPRESSION` is configurable and defaults to `snappy`. Valid options are `none`, `snappy`, `gzip`, `brotli`, `lz4`, and `zstd`.
+`PARQUET_COMPRESSION` is configurable and defaults to `snappy`. Valid options are `none`, `snappy`, `gzip`, `brotli`, `lz4`, and `zstd`. Compression still matters, but the biggest storage wins now come from the split core/tracking schema, narrower integer and `float32` types, and dictionary-friendly normalization of repeated dimensions.
 
 Expected bootstrap runtime on a current developer Mac:
 
@@ -146,11 +158,13 @@ Expected bootstrap runtime on a current developer Mac:
 Estimated output size and file count for a full historical run:
 
 - Full historical bootstrap = Statcast detail for 2015-present + Lahman aggregate history for 1871-2014.
-- The detail dataset is partitioned by `season` and `month`, and the writer splits files at `max_rows_per_group=250_000` and `max_rows_per_file=500_000`.
+- The detail core and tracking datasets are partitioned by `season` and `month`, and the writer splits files at `max_rows_per_group=250_000` and `max_rows_per_file=500_000`.
+- The canonical Statcast storage layer no longer repeats player names, raw team strings, or verbose enum strings in every row, and it drops several exploratory derived metrics from the written detail snapshots.
 - In practice, the detail dataset usually lands in the rough range of `600-1,500` Parquet files for the full historical run, depending on month-by-month Statcast volume and how many rows each partition contains.
 - The aggregate outputs add a small fixed cost: about `6` parquet files for the main aggregate tables, plus the snapshot manifest and pointer files.
 - The Lahman historical layer is tiny compared to Statcast detail; it adds a modest historical aggregate footprint but does not materially change the size profile of the full run.
-- With the default compression (`snappy`), a full historical local snapshot is typically on the order of `120-220 GB` on disk. With `PARQUET_COMPRESSION=zstd`, expect roughly `60-140 GB` depending on dataset variance and how much of the snapshot is detail data.
+- With the default compression (`snappy`), a full historical local snapshot is typically on the order of `115-210 GB` on disk. With `PARQUET_COMPRESSION=zstd`, expect roughly `55-130 GB` depending on dataset variance and how much of the snapshot is detail data.
+- The latest schema pass (player-name decoupling through `players.parquet` reuse and additional `Int8` narrowing for pitch/event encodings) generally trims another small slice from core detail storage, usually around `1-3%` versus the prior compact schema baseline.
 - A typical monthly add/update run usually writes `2-20` parquet files for the detail partition that month, plus the aggregate parquet files, and lands in roughly `3-12 GB` of new detail data for one month with `zstd`, or `5-18 GB` without it.
 - Due to the month-partitioned structure, the incremental job tends to be dominated by the latest Statcast month(s), not by Lahman history.
 

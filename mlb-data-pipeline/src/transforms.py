@@ -15,6 +15,128 @@ AB_EXCLUDED_EVENTS = {
     "catcher_interf",
 }
 
+DETAIL_WORKING_COLUMNS = [
+    "game_date",
+    "game_pk",
+    "at_bat_number",
+    "pitch_number",
+    "season",
+    "month",
+    "inning",
+    "outs_when_up",
+    "balls",
+    "strikes",
+    "batter",
+    "pitcher",
+    "player_name",
+    "stand",
+    "batting_team",
+    "pitch_type",
+    "events",
+    "bb_type",
+    "zone",
+    "release_speed",
+    "release_spin_rate",
+    "release_pos_x",
+    "release_pos_z",
+    "pfx_x",
+    "pfx_z",
+    "plate_x",
+    "plate_z",
+    "vx0",
+    "vy0",
+    "vz0",
+    "ax",
+    "ay",
+    "az",
+    "sz_top",
+    "sz_bot",
+    "effective_speed",
+    "launch_speed",
+    "launch_angle",
+    "hit_distance_sc",
+    "hc_x",
+    "hc_y",
+]
+
+DETAIL_CORE_COLUMNS = [
+    "game_date",
+    "game_pk",
+    "at_bat_number",
+    "pitch_number",
+    "season",
+    "month",
+    "inning",
+    "outs_when_up",
+    "balls",
+    "strikes",
+    "batter",
+    "pitcher",
+    "batting_team_id",
+    "event_code",
+    "pitch_type_code",
+    "bb_type_code",
+    "zone",
+]
+
+DETAIL_TRACKING_VALUE_COLUMNS = [
+    "release_speed",
+    "release_spin_rate",
+    "release_pos_x",
+    "release_pos_z",
+    "pfx_x",
+    "pfx_z",
+    "plate_x",
+    "plate_z",
+    "vx0",
+    "vy0",
+    "vz0",
+    "ax",
+    "ay",
+    "az",
+    "sz_top",
+    "sz_bot",
+    "effective_speed",
+    "launch_speed",
+    "launch_angle",
+    "hit_distance_sc",
+    "hc_x",
+    "hc_y",
+]
+
+DETAIL_TRACKING_COLUMNS = [
+    "game_pk",
+    "at_bat_number",
+    "pitch_number",
+    "season",
+    "month",
+] + DETAIL_TRACKING_VALUE_COLUMNS
+
+DETAIL_LOW_CARDINALITY_COLUMNS = {
+    "month",
+    "stand",
+    "batting_team",
+    "pitch_type",
+    "events",
+    "bb_type",
+}
+
+DETAIL_INTEGER_DTYPES = {
+    "game_pk": "Int32",
+    "at_bat_number": "Int16",
+    "pitch_number": "Int8",
+    "season": "Int16",
+    "inning": "Int8",
+    "outs_when_up": "Int8",
+    "balls": "Int8",
+    "strikes": "Int8",
+    "batter": "Int32",
+    "pitcher": "Int32",
+    "zone": "Int8",
+}
+
+DETAIL_FLOAT_COLUMNS = set(DETAIL_TRACKING_VALUE_COLUMNS)
+
 
 def add_rate_stats(df, hits_col: str, at_bats_col: str, walks_col: str, singles_col: str, doubles_col: str, triples_col: str, home_runs_col: str):
     # Use denominator guards to avoid divide-by-zero and keep outputs query friendly.
@@ -167,6 +289,196 @@ def _window_queue_entries(windows: List[Tuple[int, int, str, str]]) -> List[Tupl
     ]
 
 
+def _derive_batting_team(frame):
+    import pandas as pd
+
+    if "batting_team" in frame.columns:
+        return frame["batting_team"].astype("string")
+
+    batting_team = pd.Series(pd.NA, index=frame.index, dtype="string")
+    home_team = frame["home_team"].astype("string") if "home_team" in frame.columns else batting_team.copy()
+    away_team = frame["away_team"].astype("string") if "away_team" in frame.columns else batting_team.copy()
+    inning_half = frame["inning_topbot"].astype("string") if "inning_topbot" in frame.columns else batting_team.copy()
+
+    batting_team = home_team.copy()
+    batting_team.loc[inning_half == "Top"] = away_team.loc[inning_half == "Top"]
+    return batting_team
+
+
+def _build_code_dimension(series, code_column: str, value_column: str, dtype: str):
+    import pandas as pd
+
+    values = series.astype("string")
+    unique_values = sorted({value for value in values.dropna().tolist() if value is not None})
+    if not unique_values:
+        return pd.DataFrame(columns=[code_column, value_column]), pd.Series(dtype=dtype)
+
+    dimension_df = pd.DataFrame({value_column: unique_values})
+    dimension_df[code_column] = pd.Series(range(1, len(dimension_df) + 1), dtype=dtype)
+    codes = values.map(dimension_df.set_index(value_column)[code_column]).astype(dtype)
+    return dimension_df[[code_column, value_column]], codes
+
+
+def build_player_dimension_table(detail_df):
+    import pandas as pd
+
+    if detail_df.empty:
+        return pd.DataFrame(columns=["batter", "player_name", "stand"])
+
+    return (
+        detail_df[["batter", "player_name", "stand", "game_date", "season", "month", "game_pk", "at_bat_number", "pitch_number"]]
+        .sort_values(["game_date", "season", "month", "game_pk", "at_bat_number", "pitch_number"], na_position="last")
+        .drop_duplicates(subset=["batter"], keep="last")
+        [["batter", "player_name", "stand"]]
+        .reset_index(drop=True)
+    )
+
+
+def build_detail_storage_tables(detail_df):
+    import pandas as pd
+
+    empty_bundle = {
+        "detail": pd.DataFrame(columns=DETAIL_CORE_COLUMNS),
+        "detail_tracking": pd.DataFrame(columns=DETAIL_TRACKING_COLUMNS),
+        "players": pd.DataFrame(columns=["batter", "player_name", "stand"]),
+        "teams": pd.DataFrame(columns=["team_id", "team"]),
+        "event_types": pd.DataFrame(columns=["event_code", "event"]),
+        "pitch_types": pd.DataFrame(columns=["pitch_type_code", "pitch_type"]),
+        "batted_ball_types": pd.DataFrame(columns=["bb_type_code", "bb_type"]),
+    }
+    if detail_df.empty:
+        return empty_bundle
+
+    player_dimension_df = build_player_dimension_table(detail_df)
+
+    team_dimension_df, team_codes = _build_code_dimension(detail_df["batting_team"], "team_id", "team", "Int8")
+    event_dimension_df, event_codes = _build_code_dimension(detail_df["events"], "event_code", "event", "Int8")
+    pitch_type_dimension_df, pitch_type_codes = _build_code_dimension(detail_df["pitch_type"], "pitch_type_code", "pitch_type", "Int8")
+    bb_type_dimension_df, bb_type_codes = _build_code_dimension(detail_df["bb_type"], "bb_type_code", "bb_type", "Int8")
+
+    core_df = detail_df[
+        [
+            "game_date",
+            "game_pk",
+            "at_bat_number",
+            "pitch_number",
+            "season",
+            "month",
+            "inning",
+            "outs_when_up",
+            "balls",
+            "strikes",
+            "batter",
+            "pitcher",
+            "zone",
+        ]
+    ].copy()
+    core_df["batting_team_id"] = team_codes
+    core_df["event_code"] = event_codes
+    core_df["pitch_type_code"] = pitch_type_codes
+    core_df["bb_type_code"] = bb_type_codes
+    core_df = core_df[DETAIL_CORE_COLUMNS]
+
+    tracking_df = detail_df[DETAIL_TRACKING_COLUMNS].copy()
+    tracking_df = tracking_df[tracking_df[DETAIL_TRACKING_VALUE_COLUMNS].notna().any(axis=1)].reset_index(drop=True)
+
+    return {
+        "detail": core_df,
+        "detail_tracking": tracking_df,
+        "players": player_dimension_df,
+        "teams": team_dimension_df,
+        "event_types": event_dimension_df,
+        "pitch_types": pitch_type_dimension_df,
+        "batted_ball_types": bb_type_dimension_df,
+    }
+
+
+def _table_from_pandas_with_date32(table_df):
+    import pandas as pd
+    import pyarrow as pa
+
+    table = pa.Table.from_pandas(table_df, preserve_index=False)
+    if "game_date" not in table.column_names:
+        return table
+
+    date_series = table_df["game_date"]
+    date_values = date_series.dt.date if pd.api.types.is_datetime64_any_dtype(date_series) else date_series
+    date_index = table.column_names.index("game_date")
+    date_array = pa.array(date_values, type=pa.date32())
+    return table.set_column(date_index, "game_date", date_array)
+
+
+def _write_partitioned_dataset(dataset_df, dataset_dir, compression: str, partition_mode: str) -> int:
+    import pyarrow.dataset as ds
+
+    if dataset_df.empty:
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+        return 0
+
+    table = _table_from_pandas_with_date32(dataset_df)
+    partitioning = ["season"] if partition_mode == "season" else ["season", "month"]
+    write_options = {"compression": compression}
+    try:
+        file_options = ds.ParquetFileFormat().make_write_options(use_dictionary=True, **write_options)
+    except TypeError:
+        file_options = ds.ParquetFileFormat().make_write_options(**write_options)
+    ds.write_dataset(
+        table,
+        base_dir=str(dataset_dir),
+        format="parquet",
+        partitioning=partitioning,
+        existing_data_behavior="delete_matching",
+        max_rows_per_group=250_000,
+        max_rows_per_file=500_000,
+        file_options=file_options,
+    )
+    return len(dataset_df)
+
+
+def _write_dimension_table(df, path, compression: str) -> int:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    parquet_compression = None if compression == "none" else compression
+    if df.empty:
+        return 0
+    df.to_parquet(path, index=False, compression=parquet_compression)
+    return len(df)
+
+
+def normalize_detail_dataframe(detail_df):
+    import pandas as pd
+
+    if detail_df.empty:
+        return pd.DataFrame(columns=DETAIL_WORKING_COLUMNS)
+
+    normalized = detail_df.copy()
+
+    normalized["batting_team"] = _derive_batting_team(normalized)
+
+    for col in DETAIL_WORKING_COLUMNS:
+        if col not in normalized.columns:
+            normalized[col] = pd.NA
+
+    if "game_date" in normalized.columns:
+        normalized["game_date"] = pd.to_datetime(normalized["game_date"], errors="coerce")
+
+    for col in DETAIL_INTEGER_DTYPES:
+        if col in normalized.columns:
+            normalized[col] = pd.to_numeric(normalized[col], errors="coerce").astype(DETAIL_INTEGER_DTYPES[col])
+
+    for col in DETAIL_FLOAT_COLUMNS:
+        if col in normalized.columns:
+            normalized[col] = pd.to_numeric(normalized[col], errors="coerce").astype("Float32")
+
+    for col in DETAIL_LOW_CARDINALITY_COLUMNS:
+        if col in normalized.columns:
+            normalized[col] = normalized[col].astype("string").astype("category")
+
+    if "player_name" in normalized.columns:
+        normalized["player_name"] = normalized["player_name"].astype("string")
+
+    return normalized[DETAIL_WORKING_COLUMNS].copy()
+
+
 def fetch_detail_dataframe(config, windows: Iterable[Tuple[int, int, str, str]]) -> pd.DataFrame:
     import pandas as pd
     from progress import LocalProgressReporter
@@ -279,52 +591,45 @@ def fetch_detail_dataframe(config, windows: Iterable[Tuple[int, int, str, str]])
         return pd.DataFrame()
 
     detail_df = pd.concat(frames, ignore_index=True)
-
-    expected_cols = [
-        "batter",
-        "player_name",
-        "events",
-        "game_pk",
-        "at_bat_number",
-        "season",
-        "month",
-        "inning_topbot",
-        "home_team",
-        "away_team",
-    ]
-    for col in expected_cols:
-        if col not in detail_df.columns:
-            detail_df[col] = pd.NA
-
-    return detail_df
+    return normalize_detail_dataframe(detail_df)
 
 
-def write_detail_dataset(detail_df: pd.DataFrame, detail_dir, compression: str = "snappy", partition_mode: str = "season_month") -> int:
-    import pyarrow as pa
-    import pyarrow.dataset as ds
+def write_detail_datasets(
+    detail_df: pd.DataFrame,
+    base_output_dir,
+    compression: str = "snappy",
+    partition_mode: str = "season_month",
+    storage_tables: dict | None = None,
+) -> dict:
+    detail_dir = base_output_dir / "detail"
+    detail_tracking_dir = base_output_dir / "detail_tracking"
+    dimensions_dir = base_output_dir / "dimensions"
 
-    if detail_df.empty:
-        detail_dir.mkdir(parents=True, exist_ok=True)
-        return 0
+    storage_tables = storage_tables if storage_tables is not None else build_detail_storage_tables(detail_df)
+    detail_rows = _write_partitioned_dataset(storage_tables["detail"], detail_dir, compression, partition_mode)
+    detail_tracking_rows = _write_partitioned_dataset(storage_tables["detail_tracking"], detail_tracking_dir, compression, partition_mode)
+    player_dimension_rows = _write_dimension_table(storage_tables["players"], dimensions_dir / "players.parquet", compression)
+    team_dimension_rows = _write_dimension_table(storage_tables["teams"], dimensions_dir / "teams.parquet", compression)
+    event_dimension_rows = _write_dimension_table(storage_tables["event_types"], dimensions_dir / "event_types.parquet", compression)
+    pitch_type_dimension_rows = _write_dimension_table(storage_tables["pitch_types"], dimensions_dir / "pitch_types.parquet", compression)
+    bb_type_dimension_rows = _write_dimension_table(storage_tables["batted_ball_types"], dimensions_dir / "batted_ball_types.parquet", compression)
 
-    table = pa.Table.from_pandas(detail_df, preserve_index=False)
-    partitioning = ["season"] if partition_mode == "season" else ["season", "month"]
-    file_options = ds.ParquetFileFormat().make_write_options(compression=compression)
-    ds.write_dataset(
-        table,
-        base_dir=str(detail_dir),
-        format="parquet",
-        partitioning=partitioning,
-        existing_data_behavior="delete_matching",
-        max_rows_per_group=250_000,
-        max_rows_per_file=500_000,
-        file_options=file_options,
-    )
-
-    return len(detail_df)
+    return {
+        "detail_rows": detail_rows,
+        "detail_tracking_rows": detail_tracking_rows,
+        "player_dimension_rows": player_dimension_rows,
+        "team_dimension_rows": team_dimension_rows,
+        "event_dimension_rows": event_dimension_rows,
+        "pitch_type_dimension_rows": pitch_type_dimension_rows,
+        "bb_type_dimension_rows": bb_type_dimension_rows,
+    }
 
 
-def build_player_season_aggregates(detail_df: pd.DataFrame, source_system: str = "statcast") -> pd.DataFrame:
+def build_player_season_aggregates(
+    detail_df: pd.DataFrame,
+    source_system: str = "statcast",
+    player_dimension_df: pd.DataFrame | None = None,
+) -> pd.DataFrame:
     import pandas as pd
 
     if detail_df.empty:
@@ -361,7 +666,7 @@ def build_player_season_aggregates(detail_df: pd.DataFrame, source_system: str =
             ]
         )
 
-    agg_source = detail_df[["batter", "player_name", "events", "game_pk", "at_bat_number", "season"]].copy()
+    agg_source = detail_df[["batter", "events", "game_pk", "at_bat_number", "season"]].copy()
     agg_source["events"] = agg_source["events"].astype("string")
     agg_source["pa_key"] = (
         agg_source["game_pk"].astype("string")
@@ -398,13 +703,9 @@ def build_player_season_aggregates(detail_df: pd.DataFrame, source_system: str =
         .reset_index()
     )
 
-    names = (
-        agg_source.dropna(subset=["player_name"])
-        .groupby("batter", dropna=False)["player_name"]
-        .last()
-        .reset_index()
-    )
-
+    if player_dimension_df is None:
+        player_dimension_df = build_player_dimension_table(detail_df)
+    names = player_dimension_df[["batter", "player_name"]].drop_duplicates(subset=["batter"], keep="last")
     grouped = grouped.merge(names, on="batter", how="left")
     grouped = add_rate_stats(
         grouped,
@@ -597,14 +898,9 @@ def build_team_season_aggregates(detail_df: pd.DataFrame, source_system: str = "
             ]
         )
 
-    agg_source = detail_df[
-        ["events", "game_pk", "at_bat_number", "season", "inning_topbot", "home_team", "away_team"]
-    ].copy()
+    agg_source = detail_df[["events", "game_pk", "at_bat_number", "season", "batting_team"]].copy()
     agg_source["events"] = agg_source["events"].astype("string")
-
-    # Derive batting team from inning half; fallback to home team when inning data is missing.
-    agg_source["team"] = agg_source["home_team"].astype("string")
-    agg_source.loc[agg_source["inning_topbot"] == "Top", "team"] = agg_source["away_team"].astype("string")
+    agg_source["team"] = agg_source["batting_team"].astype("string")
 
     agg_source["pa_key"] = (
         agg_source["game_pk"].astype("string")
