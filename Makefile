@@ -6,7 +6,7 @@ notebook-build-publish-deploy:
 	cd ./jupyter-datascience-notebook && make kubernetes
 
 hub-build-publish-deploy:
-	cd ./jupyter-hub && make kubernetes
+	cd ./jupyter-hub && make deploy
 
 mlb-data-pipeline-build-publish:
 	cd ./mlb-data-pipeline && make docker publish
