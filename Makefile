@@ -1,12 +1,30 @@
 export GIT_COMMIT_SHA = $(shell git rev-parse HEAD)
 
-.PHONY: notebook-build-publish-deploy hub-build-publish-deploy mlb-data-pipeline-build-publish mlb-data-pipeline-refresh-job mlb-data-pipeline-apply-cronjob mlb-data-pipeline-local-install mlb-data-pipeline-local-run mlb-data-pipeline-local-run-upload mlb-data-pipeline-local-bootstrap mlb-data-pipeline-local-bootstrap-upload mlb-data-pipeline-local-wizard mlb-data-pipeline-bootstrap-estimate mlb-data-pipeline-test doks-jupyter doks-jupyter-with-data delete-doks-jupyter
+.PHONY: notebook-build-publish-deploy hub-build-publish-deploy hub-helm-repo hub-helm-repo-init hub-validate hub-deploy hub-helm-upgrade hub-helm-upgrade-init hub-delete-kubernetes hub-kubernetes mlb-data-pipeline-build-publish mlb-data-pipeline-refresh-job mlb-data-pipeline-apply-cronjob mlb-data-pipeline-local-install mlb-data-pipeline-local-run mlb-data-pipeline-local-run-upload mlb-data-pipeline-local-bootstrap mlb-data-pipeline-local-bootstrap-upload mlb-data-pipeline-local-wizard mlb-data-pipeline-bootstrap-estimate mlb-data-pipeline-test doks-jupyter doks-jupyter-with-data delete-doks-jupyter
 
 notebook-build-publish-deploy:
 	cd ./jupyter-datascience-notebook && make kubernetes
 
 hub-build-publish-deploy:
 	cd ./jupyter-hub && make deploy
+
+hub-helm-repo:
+	cd ./jupyter-hub && make helm-repo
+
+hub-helm-repo-init: hub-helm-repo
+
+hub-validate:
+	cd ./jupyter-hub && make validate
+
+hub-deploy: hub-build-publish-deploy
+
+hub-helm-upgrade: hub-deploy
+
+hub-helm-upgrade-init: hub-deploy
+
+hub-delete-kubernetes: delete-doks-jupyter
+
+hub-kubernetes: hub-deploy
 
 mlb-data-pipeline-build-publish:
 	cd ./mlb-data-pipeline && make docker publish
