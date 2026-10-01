@@ -15,7 +15,13 @@ Jupyter users can start from the shared notebook template copied into their work
 
 ## Outputs
 
-- Detail dataset: partitioned by `season` and `month`
+- Detail core dataset: partitioned by `season` and `month`
+- Detail tracking dataset: partitioned by `season` and `month`
+- Dimension dataset: `players.parquet`
+- Dimension dataset: `teams.parquet`
+- Dimension dataset: `event_types.parquet`
+- Dimension dataset: `pitch_types.parquet`
+- Dimension dataset: `batted_ball_types.parquet`
 - Aggregate dataset: `player_season_metrics.parquet`
 - Aggregate dataset: `player_career_metrics.parquet`
 - Aggregate dataset: `team_season_metrics.parquet`
@@ -24,6 +30,12 @@ Jupyter users can start from the shared notebook template copied into their work
 - Aggregate dataset: `manager_career_metrics.parquet`
 - Snapshot manifest: `manifest.json`
 - Latest pointer: `latest.json`
+
+The detail layer is now split into a compact core Statcast table plus a separate tracking sidecar. The core table keeps query-facing identifiers, game context, and encoded outcome fields. The tracking sidecar holds optional pitch-flight and contact measurements keyed by the same pitch identity fields.
+
+Repeated entities and low-cardinality values are normalized rather than repeated row-by-row: player names live in `players.parquet`, team abbreviations live in `teams.parquet`, and enum-like fields such as events, pitch types, and batted-ball types are stored as integer codes with dimension tables.
+
+The core detail table stores `game_date` as a date-only value, keeps `batting_team` in normalized ID form instead of storing both `home_team` and `away_team`, and writes tracking measurements as `float32` values to cut disk usage further.
 
 Player and team aggregate outputs include counting stats plus query-friendly rate stats: `avg`, `obp`, `slg`, and `ops` (with career-prefixed variants in career tables).
 
@@ -67,6 +79,8 @@ make -C mlb-data-pipeline apply-cronjob IMAGE_REPO=docker.io/<dockerhub-user>/ml
 - `local-run-upload`: run locally, write parquet to `OUTPUT_DIR`, and upload to Spaces when `SPACES_*` is configured
 - `local-bootstrap`: full historical local bootstrap with upload forced off
 - `local-bootstrap-upload`: full historical local bootstrap plus upload to Spaces
+- `local-bootstrap-zstd`: full historical local bootstrap with `PARQUET_COMPRESSION=zstd`
+- `local-bootstrap-zstd-upload`: full historical local bootstrap with zstd compression and upload to Spaces
 - `local-run-sample`: local sample/debug run with upload forced off
 - `local-run-docker`: run the container locally with a bind-mounted output directory and upload forced off
 - `local-run-sample-docker`: sampled Docker run with a bind-mounted output directory and upload forced off
@@ -123,6 +137,16 @@ make -C mlb-data-pipeline local-bootstrap \
 	OUTPUT_DIR=$(pwd)/mlb-data-pipeline/output
 ```
 
+For the smallest practical local footprint while keeping the full historical run intact, prefer zstd:
+
+```bash
+make -C mlb-data-pipeline local-bootstrap-zstd \
+	PYTHON=python3.12 \
+	OUTPUT_DIR=$(pwd)/mlb-data-pipeline/output
+```
+
+`PARQUET_COMPRESSION` is configurable and defaults to `snappy`. Valid options are `none`, `snappy`, `gzip`, `brotli`, `lz4`, and `zstd`. Compression still matters, but the biggest storage wins now come from the split core/tracking schema, narrower integer and `float32` types, and dictionary-friendly normalization of repeated dimensions.
+
 Expected bootstrap runtime on a current developer Mac:
 
 - The full `local-bootstrap` path does **not** fetch monthly data back to 1871.
@@ -130,6 +154,21 @@ Expected bootstrap runtime on a current developer Mac:
 - Lahman covers pre-2015 historical aggregates and is typically much cheaper than the Statcast fetch.
 - Based on observed local timing where active in-season months take roughly `10-20s` each and offseason months are much lighter, a cold first bootstrap on this machine should be expected to take roughly `30-60 minutes`.
 - Treat `60-90 minutes` as a safer upper-bound if Baseball Savant is slow, your network is noisy, or the machine is busy with other work.
+
+Estimated output size and file count for a full historical run:
+
+- Full historical bootstrap = Statcast detail for 2015-present + Lahman aggregate history for 1871-2014.
+- The detail core and tracking datasets are partitioned by `season` and `month`, and the writer splits files at `max_rows_per_group=250_000` and `max_rows_per_file=500_000`.
+- The canonical Statcast storage layer no longer repeats player names, raw team strings, or verbose enum strings in every row, and it drops several exploratory derived metrics from the written detail snapshots.
+- In practice, the detail dataset usually lands in the rough range of `600-1,500` Parquet files for the full historical run, depending on month-by-month Statcast volume and how many rows each partition contains.
+- The aggregate outputs add a small fixed cost: about `6` parquet files for the main aggregate tables, plus the snapshot manifest and pointer files.
+- The Lahman historical layer is tiny compared to Statcast detail; it adds a modest historical aggregate footprint but does not materially change the size profile of the full run.
+- With the default compression (`snappy`), a full historical local snapshot is typically on the order of `115-210 GB` on disk. With `PARQUET_COMPRESSION=zstd`, expect roughly `55-130 GB` depending on dataset variance and how much of the snapshot is detail data.
+- The latest schema pass (player-name decoupling through `players.parquet` reuse and additional `Int8` narrowing for pitch/event encodings) generally trims another small slice from core detail storage, usually around `1-3%` versus the prior compact schema baseline.
+- A typical monthly add/update run usually writes `2-20` parquet files for the detail partition that month, plus the aggregate parquet files, and lands in roughly `3-12 GB` of new detail data for one month with `zstd`, or `5-18 GB` without it.
+- Due to the month-partitioned structure, the incremental job tends to be dominated by the latest Statcast month(s), not by Lahman history.
+
+This is why the recommended local developer workflow is to run a full historical bootstrap with `zstd` once and then use incremental monthly refreshes for ongoing updates.
 
 The pretty local output will show the planned years, current window, completed window, remaining years, and next windows so you can see whether the run is progressing at the rate you expect.
 During the fetch loop, pretty local output also shows a rolling `total_est` and `finish_in` projection based on the average time of completed windows so far.
@@ -258,6 +297,7 @@ INCREMENTAL_MODE=true TRAILER_MONTHS=1
 
 - `START_SEASON` default `2015`
 - `END_SEASON` default current year
+- `PARQUET_COMPRESSION` default `snappy` (`none`, `snappy`, `gzip`, `brotli`, `lz4`, `zstd`)
 - `OUTPUT_DIR` default `/tmp/output`
 - `DATASET_PREFIX` default `baseball`
 - `UPLOAD_ENABLED` default `false` (`true` is required before any Spaces upload will happen, even if `SPACES_*` variables are set)

@@ -1,3 +1,11 @@
+def publishIfMain(String moduleDir) {
+  if (env.BRANCH_NAME == 'main') {
+    withDockerRegistry([credentialsId: 'docker-pat', url: 'https://index.docker.io/v1/']) {
+      sh "make -C ${moduleDir} publish"
+    }
+  }
+}
+
 pipeline {
   agent {
     label 'build-jenkins-base || build-base'
@@ -75,8 +83,11 @@ pipeline {
       steps {
         input message: 'Deploy to Kubernetes from main?', ok: 'Deploy'
 
-        sh 'make -C jupyter-datascience-notebook publish'
-        sh 'make -C jupyter-hub publish'
+        script {
+          publishIfMain('jupyter-datascience-notebook')
+          publishIfMain('jupyter-hub')
+        }
+
         sh 'make -C jupyter-hub deploy'
       }
     }
@@ -95,7 +106,7 @@ pipeline {
           )
 
           if (refreshData) {
-            sh 'make -C mlb-data-pipeline publish'
+            publishIfMain('mlb-data-pipeline')
             sh 'make -C mlb-data-pipeline run-job'
           } else {
             echo 'Skipping data refresh stage.'

@@ -15,6 +15,31 @@ def parse_int(value: Optional[str], default: int) -> int:
     return int(value)
 
 
+def parse_parquet_compression(value: Optional[str]) -> str:
+    if value is None:
+        return "snappy"
+
+    normalized = value.strip().lower()
+    if normalized in {"", "none", "uncompressed"}:
+        return "none"
+
+    valid = {"snappy", "gzip", "brotli", "lz4", "zstd"}
+    if normalized not in valid:
+        raise ValueError("PARQUET_COMPRESSION must be one of: none, snappy, gzip, brotli, lz4, zstd")
+    return normalized
+
+
+def parse_partition_mode(value: Optional[str]) -> str:
+    if value is None:
+        return "season_month"
+
+    normalized = value.strip().lower().replace("-", "_")
+    valid = {"season", "season_month"}
+    if normalized not in valid:
+        raise ValueError("PARTITION_MODE must be one of: season, season_month")
+    return normalized
+
+
 @dataclass
 class Config:
     start_season: int
@@ -44,6 +69,8 @@ class Config:
     lahman_include_overlap: bool = False
     source_overlap_policy: str = "statcast_preferred"
     pretty_local_output: bool = False
+    parquet_compression: str = "snappy"
+    partition_mode: str = "season_month"
     include_detail_dataset: bool = True
     include_aggregate_datasets: bool = True
     include_player_aggregates: bool = True
@@ -75,6 +102,8 @@ def get_config() -> Config:
     lahman_include_overlap = parse_bool(os.getenv("LAHMAN_INCLUDE_OVERLAP", "false"))
     source_overlap_policy = os.getenv("SOURCE_OVERLAP_POLICY", "statcast_preferred").strip().lower()
     pretty_local_output = parse_bool(os.getenv("PRETTY_LOCAL_OUTPUT", "false"))
+    parquet_compression = parse_parquet_compression(os.getenv("PARQUET_COMPRESSION", "snappy"))
+    partition_mode = parse_partition_mode(os.getenv("PARTITION_MODE", "season_month"))
     include_detail_dataset = parse_bool(os.getenv("INCLUDE_DETAIL_DATASET", "true"))
     include_aggregate_datasets = parse_bool(os.getenv("INCLUDE_AGGREGATE_DATASETS", "true"))
     include_player_aggregates = parse_bool(os.getenv("INCLUDE_PLAYER_AGGREGATES", "true"))
@@ -146,6 +175,8 @@ def get_config() -> Config:
         lahman_include_overlap=lahman_include_overlap,
         source_overlap_policy=source_overlap_policy,
         pretty_local_output=pretty_local_output,
+        parquet_compression=parquet_compression,
+        partition_mode=partition_mode,
         include_detail_dataset=include_detail_dataset,
         include_aggregate_datasets=include_aggregate_datasets,
         include_player_aggregates=include_player_aggregates,
