@@ -1,0 +1,64 @@
+hub:
+  config:
+    JupyterHub:
+      authenticator_class: github
+    Authenticator:
+      allowed_users:
+        - derekpedersen
+      admin_users:
+        - derekpedersen
+    GitHubOAuthenticator:
+      oauth_callback_url: https://jupyter.pedersen.io/hub/oauth_callback
+  extraEnv:
+    OAUTH_CLIENT_ID:
+      valueFrom:
+        secretKeyRef:
+          name: jupyter-hub-config
+          key: oauth_client_id
+    OAUTH_CLIENT_SECRET:
+      valueFrom:
+        secretKeyRef:
+          name: jupyter-hub-config
+          key: oauth_client_secret
+  extraConfig:
+    00-github-oauth-secrets.py: |
+      import os
+      c.GitHubOAuthenticator.client_id = os.environ["OAUTH_CLIENT_ID"]
+      c.GitHubOAuthenticator.client_secret = os.environ["OAUTH_CLIENT_SECRET"]
+  allowNamedServers: true
+  resources:
+    requests:
+      cpu: "10m"
+      memory: "250Mi"
+    limits:
+      cpu: "75m"
+      memory: "500Mi"
+
+proxy:
+  service:
+    type: ClusterIP
+  https:
+    enabled: false
+
+singleuser:
+  memory:
+    guarantee: 512M
+    limit: 1G
+  storage:
+    type: none
+
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+  hosts:
+    - jupyter.pedersen.io
+  pathType: ImplementationSpecific
+  tls:
+    - secretName: jupyter-pedersen-io-tls
+      hosts:
+        - jupyter.pedersen.io
