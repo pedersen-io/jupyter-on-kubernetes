@@ -4,10 +4,11 @@ DOCKER_HUB_NAMESPACE ?= derekpedersen
 HELM_RELEASE_NAME ?= jupyter-hub
 HELM_NAMESPACE ?= jupyter-hub
 HELM_CHART ?= jupyterhub/jupyterhub
-HELM_CHART_VERSION ?= 4.4.2
+HELM_CHART_VERSION ?=
 HELM_VALUES_FILE ?= ./values.yaml
 SINGLEUSER_IMAGE_REPO ?=
 SINGLEUSER_IMAGE_TAG ?=
+HELM_CHART_VERSION_ARG = $(if $(HELM_CHART_VERSION),--version $(HELM_CHART_VERSION))
 HELM_SINGLEUSER_IMAGE_SET_ARGS = $(if $(SINGLEUSER_IMAGE_REPO),--set singleuser.image.name=$(SINGLEUSER_IMAGE_REPO)) $(if $(SINGLEUSER_IMAGE_TAG),--set singleuser.image.tag=$(SINGLEUSER_IMAGE_TAG))
 
 .PHONY: helm-repo helm-repo-init validate deploy helm-upgrade helm-upgrade-init delete-kubernetes kubernetes
@@ -20,10 +21,10 @@ helm-repo-init: helm-repo
 
 validate: helm-repo
 	@tmpdir="$$(mktemp -d)"; \
-	helm pull ${HELM_CHART} --version ${HELM_CHART_VERSION} --untar --untardir "$$tmpdir" >/dev/null; \
+	helm pull ${HELM_CHART} ${HELM_CHART_VERSION_ARG} --untar --untardir "$$tmpdir" >/dev/null; \
 	helm lint "$$tmpdir/jupyterhub" --values ${HELM_VALUES_FILE}; \
 	helm template ${HELM_RELEASE_NAME} ${HELM_CHART} \
-		--version ${HELM_CHART_VERSION} \
+		${HELM_CHART_VERSION_ARG} \
 		--namespace ${HELM_NAMESPACE} \
 		--values ${HELM_VALUES_FILE} \
 		${HELM_SINGLEUSER_IMAGE_SET_ARGS} >/dev/null; \
@@ -31,7 +32,7 @@ validate: helm-repo
 
 deploy: helm-repo
 	helm upgrade --install ${HELM_RELEASE_NAME} ${HELM_CHART} \
-		--version ${HELM_CHART_VERSION} \
+		${HELM_CHART_VERSION_ARG} \
 		--namespace ${HELM_NAMESPACE} \
 		--create-namespace \
 		--values ${HELM_VALUES_FILE} \

@@ -43,15 +43,12 @@ proxy:
     enabled: false
 
 singleuser:
-  image:
-    name: quay.io/jupyterhub/k8s-singleuser-sample
-    tag: "4.4.2"
-    pullPolicy: IfNotPresent
   storage:
     type: none
 
+# By default, this uses the chart's current sample single-user image.
 # Uncomment this block, or pass SINGLEUSER_IMAGE_REPO and SINGLEUSER_IMAGE_TAG
-# to the Make targets, when you want to switch back to the custom notebook image.
+# to the Make targets, when you want to switch to the custom notebook image.
 # singleuser:
 #   image:
 #     name: docker.io/derekpedersen/jupyter-datascience-notebook

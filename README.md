@@ -30,12 +30,20 @@ make -C jupyter-hub deploy
 
 By default, the Helm values use the chart's sample single-user image so you can test the deployment path without depending on the custom notebook image.
 
+By default, the Makefile also tracks the latest chart release in the configured Helm repo. If you need to pin a specific chart version for a deploy or validation run, pass `HELM_CHART_VERSION=<version>`.
+
 When you want to deploy with the custom notebook image instead, pass explicit overrides:
 
 ```bash
 make -C jupyter-hub deploy \
 	SINGLEUSER_IMAGE_REPO=docker.io/derekpedersen/jupyter-datascience-notebook \
 	SINGLEUSER_IMAGE_TAG=<image-tag>
+```
+
+Example with an explicit chart pin:
+
+```bash
+make -C jupyter-hub validate HELM_CHART_VERSION=4.4.2
 ```
 
 Jenkins-style Helm aliases are also available for consistency with your Jenkins repo:
