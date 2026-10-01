@@ -44,8 +44,8 @@ proxy:
 
 singleuser:
   memory:
-    guarantee: 512Mi
-    limit: 1Gi
+    guarantee: 512M
+    limit: 1G
   storage:
     type: none
 
