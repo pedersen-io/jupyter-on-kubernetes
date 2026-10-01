@@ -6,8 +6,9 @@ HELM_NAMESPACE ?= jupyter-hub
 HELM_CHART ?= jupyterhub/jupyterhub
 HELM_CHART_VERSION ?= 4.4.2
 HELM_VALUES_FILE ?= ./values.yaml
-NOTEBOOK_IMAGE_REPO ?= docker.io/${DOCKER_HUB_NAMESPACE}/jupyter-datascience-notebook
-NOTEBOOK_IMAGE_TAG ?= ${GIT_COMMIT_SHA}
+SINGLEUSER_IMAGE_REPO ?=
+SINGLEUSER_IMAGE_TAG ?=
+HELM_SINGLEUSER_IMAGE_SET_ARGS = $(if $(SINGLEUSER_IMAGE_REPO),--set singleuser.image.name=$(SINGLEUSER_IMAGE_REPO)) $(if $(SINGLEUSER_IMAGE_TAG),--set singleuser.image.tag=$(SINGLEUSER_IMAGE_TAG))
 
 .PHONY: helm-repo helm-repo-init validate deploy helm-upgrade helm-upgrade-init delete-kubernetes kubernetes
 
@@ -25,8 +26,7 @@ validate: helm-repo
 		--version ${HELM_CHART_VERSION} \
 		--namespace ${HELM_NAMESPACE} \
 		--values ${HELM_VALUES_FILE} \
-		--set singleuser.image.name=${NOTEBOOK_IMAGE_REPO} \
-		--set singleuser.image.tag=${NOTEBOOK_IMAGE_TAG} >/dev/null; \
+		${HELM_SINGLEUSER_IMAGE_SET_ARGS} >/dev/null; \
 	rm -rf "$$tmpdir"
 
 deploy: helm-repo
@@ -35,8 +35,7 @@ deploy: helm-repo
 		--namespace ${HELM_NAMESPACE} \
 		--create-namespace \
 		--values ${HELM_VALUES_FILE} \
-		--set singleuser.image.name=${NOTEBOOK_IMAGE_REPO} \
-		--set singleuser.image.tag=${NOTEBOOK_IMAGE_TAG}
+		${HELM_SINGLEUSER_IMAGE_SET_ARGS}
 
 helm-upgrade: deploy
 

@@ -10,7 +10,7 @@ hub:
     GitHubOAuthenticator:
       oauth_callback_url: https://jupyter.pedersen.io/hub/oauth_callback
     KubeSpawner:
-      notebook_dir: /home/jovyan/assignments
+      notebook_dir: /home/jovyan/work
   extraEnv:
     OAUTH_CLIENT_ID:
       valueFrom:
@@ -44,13 +44,23 @@ proxy:
 
 singleuser:
   image:
-    name: docker.io/derekpedersen/jupyter-datascience-notebook
-    tag: latest
+    name: quay.io/jupyterhub/k8s-singleuser-sample
+    tag: "4.4.2"
     pullPolicy: IfNotPresent
-  cmd: null
-  defaultUrl: /tree/Welcome.ipynb
   storage:
     type: none
+
+# Uncomment this block, or pass SINGLEUSER_IMAGE_REPO and SINGLEUSER_IMAGE_TAG
+# to the Make targets, when you want to switch back to the custom notebook image.
+# singleuser:
+#   image:
+#     name: docker.io/derekpedersen/jupyter-datascience-notebook
+#     tag: latest
+#     pullPolicy: IfNotPresent
+#   cmd: null
+#   defaultUrl: /lab/tree/MLB_Data_Starter.ipynb
+#   storage:
+#     type: none
 
 ingress:
   enabled: true

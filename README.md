@@ -28,6 +28,16 @@ Deploy JupyterHub with Helm:
 make -C jupyter-hub deploy
 ```
 
+By default, the Helm values use the chart's sample single-user image so you can test the deployment path without depending on the custom notebook image.
+
+When you want to deploy with the custom notebook image instead, pass explicit overrides:
+
+```bash
+make -C jupyter-hub deploy \
+	SINGLEUSER_IMAGE_REPO=docker.io/derekpedersen/jupyter-datascience-notebook \
+	SINGLEUSER_IMAGE_TAG=<image-tag>
+```
+
 Jenkins-style Helm aliases are also available for consistency with your Jenkins repo:
 
 ```bash
@@ -155,6 +165,24 @@ kubectl create secret generic jupyter-hub-config \
 	--from-literal=oauth_client_secret="$OAUTH_CLIENT_SECRET" \
 	--dry-run=client -o yaml | kubectl apply -f -
 ```
+
+## Future Hub Customization
+
+The current Kubernetes deployment uses the official `jupyterhub` Helm chart and the stock hub image.
+
+The following legacy files are intentionally kept in the repo for future extension work, even though they are not part of the active Helm deploy path today:
+
+- `jupyter-hub/Dockerfile`
+- `jupyter-hub/jupyter-hub_config.template.py`
+- `jupyter-hub/config-secret.yaml`
+
+Intended future use:
+
+- `jupyter-hub/Dockerfile`: use this if the stock chart hub image stops being sufficient and you need extra Python packages, a custom authenticator or spawner, or additional system-level tooling inside the hub pod.
+- `jupyter-hub/jupyter-hub_config.template.py`: use this as a reference when translating more complex Python-based hub behavior into `hub.config`, `hub.extraConfig`, or `hub.extraFiles`.
+- `jupyter-hub/config-secret.yaml`: use this as a reference manifest if you later want a checked-in secret template for bootstrapping environments, while still keeping real secret values out of git.
+
+These files are preserved as reference and fallback material. They are not used by `make -C jupyter-hub deploy`, `helm-upgrade`, Jenkins deploys, or the active Helm validation path.
 
 Tooling expected on Jenkins agents:
 
