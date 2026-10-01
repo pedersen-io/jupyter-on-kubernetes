@@ -28,11 +28,16 @@ Deploy JupyterHub with Helm:
 make -C jupyter-hub deploy
 ```
 
-By default, the Helm values use the chart's sample single-user image so you can test the deployment path without depending on the custom notebook image.
+Hub deploys use the custom notebook image tagged with the current Git commit SHA. This image includes the MLB starter notebook, which is copied into each user's workspace when their server starts. Publish the matching notebook image before deploying directly with `make -C jupyter-hub deploy`:
+
+```bash
+make -C jupyter-datascience-notebook publish
+make -C jupyter-hub deploy
+```
 
 By default, the Makefile also tracks the latest chart release in the configured Helm repo. If you need to pin a specific chart version for a deploy or validation run, pass `HELM_CHART_VERSION=<version>`.
 
-When you want to deploy with the custom notebook image instead, pass explicit overrides:
+To use a different image repository or tag, pass explicit overrides:
 
 ```bash
 make -C jupyter-hub deploy \
