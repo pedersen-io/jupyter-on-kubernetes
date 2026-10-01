@@ -43,6 +43,9 @@ proxy:
     enabled: false
 
 singleuser:
+  memory:
+    guarantee: 512Mi
+    limit: 1Gi
   storage:
     type: none
 
