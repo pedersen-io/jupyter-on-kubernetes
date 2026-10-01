@@ -9,8 +9,6 @@ hub:
         - derekpedersen
     GitHubOAuthenticator:
       oauth_callback_url: https://jupyter.pedersen.io/hub/oauth_callback
-    KubeSpawner:
-      notebook_dir: /home/jovyan/work
   extraEnv:
     OAUTH_CLIENT_ID:
       valueFrom:
@@ -48,19 +46,6 @@ singleuser:
     limit: 1G
   storage:
     type: none
-
-# By default, this uses the chart's current sample single-user image.
-# Uncomment this block, or pass SINGLEUSER_IMAGE_REPO and SINGLEUSER_IMAGE_TAG
-# to the Make targets, when you want to switch to the custom notebook image.
-# singleuser:
-#   image:
-#     name: docker.io/derekpedersen/jupyter-datascience-notebook
-#     tag: latest
-#     pullPolicy: IfNotPresent
-#   cmd: null
-#   defaultUrl: /lab/tree/MLB_Data_Starter.ipynb
-#   storage:
-#     type: none
 
 ingress:
   enabled: true
