@@ -33,6 +33,7 @@ pipeline {
           set -eu
 
           command -v docker >/dev/null 2>&1 || { echo "docker is required"; exit 1; }
+          command -v helm >/dev/null 2>&1 || { echo "helm is required"; exit 1; }
           command -v kubectl >/dev/null 2>&1 || { echo "kubectl is required"; exit 1; }
         '''
       }
@@ -46,12 +47,6 @@ pipeline {
           }
         }
 
-        stage('Build Hub Image') {
-          steps {
-            sh 'make -C jupyter-hub docker'
-          }
-        }
-
         stage('Build MLB Data Pipeline Image') {
           steps {
             sh 'make -C mlb-data-pipeline docker'
@@ -62,17 +57,7 @@ pipeline {
 
     stage('Test') {
       steps {
-        sh '''
-          set -eu
-
-          sed -e "s/%GIT_COMMIT_SHA%/${GIT_COMMIT_SHA}/g" \
-              ./jupyter-hub/kubernetes-deployment.yaml > ./jupyter-hub/deployment.ci.yaml
-
-          kubectl create --dry-run=client --validate=false -f ./jupyter-hub/deployment.ci.yaml -o yaml >/dev/null
-          kubectl create --dry-run=client --validate=false -f ./jupyter-hub/kubernetes-service.yaml -o yaml >/dev/null
-
-          rm -f ./jupyter-hub/deployment.ci.yaml
-        '''
+        sh 'make -C jupyter-hub validate'
       }
     }
 
@@ -85,7 +70,6 @@ pipeline {
 
         script {
           publishIfMain('jupyter-datascience-notebook')
-          publishIfMain('jupyter-hub')
         }
 
         sh 'make -C jupyter-hub deploy'
@@ -116,9 +100,4 @@ pipeline {
     }
   }
 
-  post {
-    always {
-      sh 'rm -f ./jupyter-hub/deployment.ci.yaml || true'
-    }
-  }
 }
